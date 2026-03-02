@@ -1,12 +1,10 @@
 import hashlib
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALGORITHM = "HS256"
 
@@ -29,13 +27,13 @@ def verify_token(token: str) -> dict | None:
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str, password_version: int = 1) -> bool:
     """Verify password with SHA256 legacy (v1) or bcrypt (v2) support."""
     if password_version == 2:
-        return pwd_context.verify(plain, hashed)
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
     # Legacy SHA256
     return hashlib.sha256(plain.encode()).hexdigest() == hashed
 
