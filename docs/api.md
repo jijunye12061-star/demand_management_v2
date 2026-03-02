@@ -2,6 +2,7 @@
 
 > Base URL: `/api/v1`
 > 认证: JWT Bearer Token (除 `/auth/login` 外全部需要)
+> ⚠️ 响应格式: 以下各接口 Response 均为 `data` 部分的简写, 实际返回统一包装为 `{ "code": 0, "data": {...}, "message": "ok" }`, 详见 project.md §4
 
 ---
 

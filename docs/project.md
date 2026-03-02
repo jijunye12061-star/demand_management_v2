@@ -10,31 +10,30 @@
 
 ### 后端
 
-| 层      | 选型                  | 版本       | 说明                                   |
-|--------|---------------------|----------|--------------------------------------|
-| Web 框架 | FastAPI             | ≥0.115   | 异步高性能, 自带 OpenAPI 文档                 |
-| ORM    | SQLAlchemy 2.0      | ≥2.0     | 使用声明式映射 + async session              |
-| 数据校验   | Pydantic v2         | ≥2.9     | FastAPI 原生集成                         |
-| 数据库    | SQLite → PostgreSQL | 先 SQLite | **保留现有 data.db**, 后续平滑切换             |
-| 认证     | JWT (python-jose)   | —        | access_token + refresh_token 双 token |
-| 密码     | passlib[bcrypt]     | —        | 替换现有 SHA256, 做兼容迁移                   |
-| 文件存储   | 本地文件系统              | —        | 保持 `data/uploads/` 结构                |
-| 任务调度   | APScheduler         | —        | 数据库备份、日志清理                           |
-| 测试     | pytest + httpx      | —        | AsyncClient 测试 API                   |
+| 层      | 选型                | 版本       | 说明                                                                         |
+|--------|-------------------|----------|----------------------------------------------------------------------------|
+| Web 框架 | FastAPI           | ≥0.115   | 异步高性能, 自带 OpenAPI 文档                                                       |
+| ORM    | SQLAlchemy 2.0    | ≥2.0     | 声明式映射 + 同步 session (架构预留异步切换能力)                                            |
+| 数据校验   | Pydantic v2       | ≥2.9     | FastAPI 原生集成                                                               |
+| 数据库    | SQLite            | 先 SQLite | **保留现有 data.db**; 架构通过 `DATABASE_URL` 抽象, 后续可切换 PostgreSQL/MySQL, ORM 层无感知 |
+| 认证     | JWT (python-jose) | —        | access_token + refresh_token 双 token                                       |
+| 密码     | passlib[bcrypt]   | —        | 替换现有 SHA256, 做兼容迁移                                                         |
+| 文件存储   | 本地文件系统            | —        | 保持 `data/uploads/` 结构                                                      |
+| 任务调度   | APScheduler       | —        | 数据库备份、日志清理                                                                 |
+| 测试     | pytest + httpx    | —        | TestClient 同步测试 API                                                        |
 
 ### 前端
-使用初始化时最新稳定版
 
-| 层    | 选型                          | 说明                      |
-|------|-----------------------------|-------------------------|
-| 框架   | React 18                    | —                       |
-| 脚手架  | Ant Design Pro v6           | 内置权限路由、ProTable、ProForm |
-| UI 库 | Ant Design 5.x              | —                       |
-| 图表   | @ant-design/charts (基于 G2)  | 替代 Plotly               |
-| 状态管理 | zustand 或 Ant Design Pro 内置 | 轻量优先                    |
-| 请求层  | umi-request / axios         | 统一拦截器处理 JWT 刷新          |
-| 构建   | Umi 4                       | Ant Design Pro 默认       |
-| 国际化  | 暂不需要                        | 纯中文系统                   |
+| 层    | 选型                          | 说明                                   |
+|------|-----------------------------|--------------------------------------|
+| 框架   | React 18                    | —                                    |
+| 脚手架  | Ant Design Pro              | 使用初始化时最新稳定版, 内置权限路由、ProTable、ProForm |
+| UI 库 | Ant Design 5.x              | —                                    |
+| 图表   | @ant-design/charts (基于 G2)  | 替代 Plotly                            |
+| 状态管理 | zustand 或 Ant Design Pro 内置 | 轻量优先                                 |
+| 请求层  | umi-request / axios         | 统一拦截器处理 JWT 刷新                       |
+| 构建   | Umi 4                       | Ant Design Pro 默认                    |
+| 国际化  | 暂不需要                        | 纯中文系统                                |
 
 ### 部署
 
@@ -193,6 +192,8 @@ chore: 构建/工具              style: 格式
 
 ### 通用响应格式
 
+所有 API 统一使用以下包装格式返回 (包括 api.md 中定义的各接口):
+
 ```json
 // 成功
 {
@@ -223,6 +224,8 @@ chore: 构建/工具              style: 格式
 }
 ```
 
+> ⚠️ api.md 中各接口的 Response 示例为简写 (仅展示 data 部分), 实际返回时均会被包装在上述格式中。
+
 ### RESTful 约定
 
 | 动作 | 方法     | 路径                    | 示例                          |
@@ -251,4 +254,4 @@ chore: 构建/工具              style: 格式
 2. **密码**: 新增 `password_version` 字段, 首次登录时自动从 SHA256 迁移到 bcrypt
 3. **时间字段**: 统一为 UTC 存储, 前端展示时转北京时间
 4. **新增字段**: 通过 ALTER TABLE 追加, 不破坏现有数据
-5. **后续切 PostgreSQL**: 仅改 `DATABASE_URL`, ORM 层无感知
+5. **数据库可移植性**: 所有查询通过 SQLAlchemy ORM 抽象, 仅需修改 `DATABASE_URL` 即可切换到 PostgreSQL/MySQL, 应用代码无需改动
