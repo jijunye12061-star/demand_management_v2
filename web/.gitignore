@@ -38,3 +38,5 @@ screenshot
 .firebase
 
 build
+
+**/__pycache__/

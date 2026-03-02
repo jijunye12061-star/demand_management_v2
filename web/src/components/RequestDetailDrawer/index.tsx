@@ -1,38 +1,85 @@
+// web/src/components/RequestDetailDrawer/index.tsx
 import React from 'react';
-import { Drawer } from 'antd';
+import { Drawer, Tag, Typography } from 'antd';
 import { ProDescriptions } from '@ant-design/pro-components';
 import type { RequestItem } from '@/services/typings';
-import { STATUS_ENUM } from '@/utils/constants'; // 建议将常量提出去，这里为简便我们在底部定义
+import { STATUS_ENUM } from '@/utils/constants';
+import FileDownloadButton from '../FileDownloadButton';
 
-interface Props {
-  visible: boolean;
+const { Paragraph } = Typography;
+
+interface RequestDetailDrawerProps {
+  open: boolean;
   onClose: () => void;
-  data?: RequestItem;
+  request: RequestItem | null;
 }
 
-const RequestDetailDrawer: React.FC<Props> = ({ visible, onClose, data }) => {
+const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({ open, onClose, request }) => {
   return (
-    <Drawer width={600} open={visible} onClose={onClose} title="需求详情" destroyOnClose>
-      <ProDescriptions<RequestItem>
-        dataSource={data}
-        column={1}
-        columns={[
-          { title: '标题', dataIndex: 'title' },
-          { title: '状态', dataIndex: 'status', valueEnum: STATUS_ENUM },
-          { title: '机构名称', dataIndex: 'org_name' },
-          { title: '机构类型', dataIndex: 'org_type' },
-          { title: '部门', dataIndex: 'department' },
-          { title: '需求类型', dataIndex: 'request_type' },
-          { title: '研究范围', dataIndex: 'research_scope' },
-          { title: '研究员', dataIndex: 'researcher_name' },
-          { title: '销售', dataIndex: 'sales_name' },
-          { title: '描述', dataIndex: 'description', valueType: 'textarea' },
-          { title: '处理结果反馈', dataIndex: 'result_note', valueType: 'textarea' },
-          { title: '工时', dataIndex: 'work_hours' },
-          { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime' },
-          { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime' },
-        ]}
-      />
+    <Drawer
+      title="需求详情"
+      width={720}
+      open={open}
+      onClose={onClose}
+      destroyOnClose
+    >
+      {request && (
+        <ProDescriptions<RequestItem>
+          column={2}
+          dataSource={request}
+          bordered
+        >
+          <ProDescriptions.Item dataIndex="title" label="需求标题" span={2} />
+
+          <ProDescriptions.Item label="状态">
+            <Tag color={STATUS_ENUM[request.status]?.status?.toLowerCase()}>
+              {STATUS_ENUM[request.status]?.text || request.status}
+            </Tag>
+          </ProDescriptions.Item>
+
+          <ProDescriptions.Item dataIndex="request_type" label="需求类型" />
+          <ProDescriptions.Item dataIndex="research_scope" label="研究范围" />
+
+          <ProDescriptions.Item dataIndex="org_name" label="机构名称" />
+          <ProDescriptions.Item dataIndex="org_type" label="机构类型" />
+          <ProDescriptions.Item dataIndex="department" label="对接部门" />
+
+          <ProDescriptions.Item label="是否保密">
+            {request.is_confidential ? <Tag color="red">保密</Tag> : '公开'}
+          </ProDescriptions.Item>
+
+          <ProDescriptions.Item dataIndex="sales_name" label="销售姓名" />
+          <ProDescriptions.Item dataIndex="researcher_name" label="对接研究员" />
+
+          <ProDescriptions.Item dataIndex="created_at" label="创建时间" valueType="dateTime" />
+          <ProDescriptions.Item dataIndex="completed_at" label="完成时间" valueType="dateTime" />
+
+          <ProDescriptions.Item dataIndex="work_hours" label="预估工时(小时)" />
+
+          <ProDescriptions.Item label="需求描述" span={2}>
+            <Paragraph ellipsis={{ rows: 3, expandable: true, symbol: '展开' }}>
+              {request.description || '-'}
+            </Paragraph>
+          </ProDescriptions.Item>
+
+          {request.status === 'completed' && (
+            <ProDescriptions.Item label="处理结果" span={2}>
+              <Paragraph>
+                {request.result_note || '-'}
+              </Paragraph>
+              {request.attachment_path && (
+                <div style={{ marginTop: 8 }}>
+                  <FileDownloadButton
+                    requestId={request.id}
+                    // 动态提取原文件名或拼接友好名称
+                    fileName={`${request.title}-附件`}
+                  />
+                </div>
+              )}
+            </ProDescriptions.Item>
+          )}
+        </ProDescriptions>
+      )}
     </Drawer>
   );
 };

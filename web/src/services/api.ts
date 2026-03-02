@@ -43,13 +43,6 @@ export async function getRequests(params: RequestListParams) {
   };
 }
 
-export async function downloadAttachment(requestId: number) {
-  return request(`/api/v1/files/download/${requestId}`, {
-    method: 'GET',
-    responseType: 'blob', // 明确要求返回文件流
-  });
-}
-
 export async function exportRequestsExcel(params: RequestListParams) {
   return request('/api/v1/exports/requests', {
     method: 'GET',
@@ -61,5 +54,21 @@ export async function exportRequestsExcel(params: RequestListParams) {
 export async function cancelRequest(id: number) {
   return request(`/api/v1/requests/${id}/cancel`, {
     method: 'POST',
+  });
+}
+
+// 补充：获取当前销售名下的机构列表 (用于下载附件时选择)
+export async function getMineOrgs() {
+  return request<{ orgs: { id: number; name: string }[] }>('/api/v1/orgs/mine', {
+    method: 'GET',
+  });
+}
+
+// 修改：下载附件接口支持传入 org_name
+export async function downloadAttachment(requestId: number, org_name?: string) {
+  return request(`/api/v1/files/download/${requestId}`, {
+    method: 'GET',
+    params: { org_name }, // 动态传参
+    responseType: 'blob',
   });
 }

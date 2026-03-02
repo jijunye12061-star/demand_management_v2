@@ -1,166 +1,141 @@
-﻿// src/pages/Sales/SubmitRequest/index.tsx
-import React, {useRef} from 'react';
-import {
-    PageContainer,
-    ProForm,
-    ProFormText,
-    ProFormSelect,
-    ProFormTextArea,
-    ProFormSwitch,
-    ProFormDateTimePicker,
-    ProFormDependency
-} from '@ant-design/pro-components';
-import {message, notification, Button} from 'antd';
-import type {ProFormInstance} from '@ant-design/pro-components';
-import {createRequest, getOrganizations, getResearchers, cancelRequest} from '@/services/api';
-import type {Organization} from '@/services/typings';
+﻿import React, { useState } from 'react';
+import { PageContainer, ProCard, ProForm, ProFormText, ProFormTextArea, ProFormSelect, ProFormSwitch, ProFormDateTimePicker, ProFormDependency } from '@ant-design/pro-components';
+import { message, Form, Modal } from 'antd';
+import { useNavigate } from '@umijs/max'; // Umi 路由钩子
+import { getOrganizations, getResearchers, createRequest } from '@/services/api';
+import type { Organization } from '@/services/typings';
+import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
 
-const DEPT_MAP: Record<string, string[]> = {
-    '银行': ['金市', '资管', '其他'],
-    '券商': ['自营', '资管', '其他'],
-    '保险': ['母公司', '资管', '其他'],
-};
-
 const SubmitRequest: React.FC = () => {
-    const formRef = useRef<ProFormInstance>(null);
-    const orgsRef = useRef<Organization[]>([]);
+  const [form] = Form.useForm();
+  const navigate = useNavigate();
+  const [orgList, setOrgList] = useState<Organization[]>([]);
 
-    // 🔴 新增：处理撤回并重新填写的逻辑
-    const handleUndo = async (newRequestId: number, previousValues: any) => {
-        try {
-            await cancelRequest(newRequestId);
-            notification.destroy(`submit-success-${newRequestId}`); // 关掉右上角的通知
-            message.success('需求已撤回，您可以修改后重新提交');
+  const handleFinish = async (values: any) => {
+    try {
+      const payload = {
+        ...values,
+        created_at: values.created_at ? dayjs(values.created_at).format('YYYY-MM-DD HH:mm:ss') : undefined,
+      };
 
-            // 核心：把刚才填的数据再塞回表单里
-            formRef.current?.setFieldsValue(previousValues);
-        } catch (error) {
-            // 错误由全局拦截处理
+      await createRequest(payload);
+
+      // 提单成功后的沉浸式反馈
+      Modal.success({
+        title: '需求提交成功！',
+        content: '您的需求已经发送给研究端，您可以在“我的需求”列表中随时追踪处理进度。',
+        okText: '去查看我的需求',
+        cancelText: '继续提交',
+        okCancel: true,
+        onOk: () => {
+          navigate('/sales/my-requests'); // 跳转到我的需求
+        },
+        onCancel: () => {
+          form.resetFields(); // 留在此页继续提交并清空表单
         }
-    };
+      });
 
-    const handleFinish = async (values: any) => {
-        try {
-            // 核心修复：拦截表单数据，格式化时间戳为 ISO 字符串
-            const payload = {
-                ...values,
-                // 如果有值，转换为类似 "2026-03-01T10:30:00Z" 的字符串；如果没有则传 undefined
-                created_at: values.created_at ? dayjs(values.created_at).toISOString() : undefined,
-            };
+      return true;
+    } catch (error) {
+      console.error('提交失败:', error);
+      message.error('提交失败，请重试');
+      return false;
+    }
+  };
 
-            const res = await createRequest(payload);
-            message.success('需求提交成功');
-            formRef.current?.resetFields();
+  return (
+    <PageContainer title="提交需求" subTitle="填写详细信息以便研究员精准对接">
+      <ProForm
+        form={form}
+        onFinish={handleFinish}
+        initialValues={{ is_confidential: false, created_at: dayjs() }}
+        layout="vertical"
+        submitter={{
+          searchConfig: { submitText: '立即提交', resetText: '重置表单' },
+          render: (props, doms) => {
+            return (
+              <ProCard style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
+                  {doms}
+                </div>
+              </ProCard>
+            );
+          },
+        }}
+      >
+        <ProCard title="基础要求" bordered headerBordered tooltip="需求的核心定性属性" style={{ marginBottom: 16 }}>
+          <ProForm.Group>
+            <ProFormText name="title" label="需求标题" width="md" rules={[{ required: true }]} />
+            <ProFormDateTimePicker name="created_at" label="提单时间" width="md" rules={[{ required: true }]} tooltip="默认当前，支持回溯" />
+          </ProForm.Group>
+          <ProForm.Group>
+            <ProFormSelect name="request_type" label="需求类型" width="md" options={REQUEST_TYPE_OPTIONS} rules={[{ required: true }]} />
+            <ProFormSelect name="research_scope" label="研究范围" width="md" options={RESEARCH_SCOPE_OPTIONS} placeholder="请选择研究范围" />
+          </ProForm.Group>
+        </ProCard>
 
-            // 🔴 变动：改成弹出一个带有“撤回”按钮的通知框
-            notification.success({
-                key: `submit-success-${res.id}`,
-                message: '需求提交成功',
-                description: '您的需求已成功流转至研究端。发现填错了吗？',
-                duration: 8, // 提示保留 8 秒
-                btn: (
-                    <Button
-                        type="primary"
-                        danger
-                        size="small"
-                        onClick={() => handleUndo(res.id, values)} // 把 ID 和刚才填的值传进去
-                    >
-                        撤回并重新填写
-                    </Button>
-                ),
-            });
-            return true;
-        } catch (error) {
-            // 你的 app.tsx 已经拦截了错误（控制台打印了 errorHandler: AxiosError）
-            // 这里 return false 是为了告诉 ProForm 停止按钮的 loading 动画
-            return false;
-        }
-    };
+        <ProCard title="对接信息" bordered headerBordered tooltip="机构与研究员匹配" style={{ marginBottom: 16 }}>
+          <ProForm.Group>
+            <ProFormSelect
+              name="org_name"
+              label="目标机构"
+              width="md"
+              rules={[{ required: true }]}
+              request={async () => {
+                const data = await getOrganizations();
+                setOrgList(data);
+                return data.map((org) => ({ label: org.name, value: org.name }));
+              }}
+              fieldProps={{
+                onChange: (value) => {
+                  const selectedOrg = orgList.find((org) => org.name === value);
+                  if (selectedOrg) {
+                    form.setFieldsValue({ org_type: selectedOrg.org_type, department: undefined });
+                  }
+                },
+              }}
+            />
+            <ProFormText name="org_type" label="机构类型" width="md" readonly placeholder="选择机构后自动带入" />
+          </ProForm.Group>
 
-    return (
-        <PageContainer title="提交新需求">
-            <ProForm formRef={formRef} onFinish={handleFinish} layout="vertical">
-                <ProFormText name="title" label="需求标题" rules={[{required: true}]}/>
+          <ProFormDependency name={['org_type']}>
+            {({ org_type }) => {
+              const departments = org_type ? ORG_DEPARTMENT_MAP[org_type] : [];
+              if (departments && departments.length > 0) {
+                return (
+                  <ProForm.Group>
+                    <ProFormSelect name="department" label="对接部门" width="md" options={departments.map((dept) => ({ label: dept, value: dept }))} rules={[{ required: true }]} />
+                  </ProForm.Group>
+                );
+              }
+              return null;
+            }}
+          </ProFormDependency>
 
-                <ProFormSelect
-                    name="request_type"
-                    label="需求类型"
-                    rules={[{required: true}]}
-                    options={['基金筛选', '传统报告定制', '量化策略定制', '系统定制', '综合暂时兜底'].map(i => ({
-                        label: i,
-                        value: i
-                    }))}
-                />
+          <ProForm.Group>
+            <ProFormSelect
+              name="researcher_id"
+              label="指定研究员"
+              width="md"
+              rules={[{ required: true }]}
+              request={async () => {
+                const data = await getResearchers();
+                return data.map((user) => ({ label: user.display_name, value: user.id }));
+              }}
+            />
+            <div style={{ width: 328, display: 'flex', alignItems: 'center' }}>
+              <ProFormSwitch name="is_confidential" label="严格保密" tooltip="开启后，大厅其他销售不可见" />
+            </div>
+          </ProForm.Group>
+        </ProCard>
 
-                <ProFormSelect
-                    name="research_scope"
-                    label="研究范围"
-                    options={['纯债', '固收+', '权益', '量化', '资产配置', '其他'].map(i => ({label: i, value: i}))}
-                />
-
-                <ProFormSelect
-                    name="org_name"
-                    label="机构名称"
-                    rules={[{required: true}]}
-                    showSearch
-                    request={async () => {
-                        const data = await getOrganizations();
-                        orgsRef.current = data;
-                        return data.map(org => ({label: org.name, value: org.name}));
-                    }}
-                    fieldProps={{
-                        onChange: (val) => {
-                            // 匹配机构并自动带入 org_type
-                            const targetOrg = orgsRef.current.find(org => org.name === val);
-                            if (targetOrg) {
-                                formRef.current?.setFieldsValue({
-                                    org_type: targetOrg.org_type,
-                                    department: null, // 切换机构时清空已选部门
-                                });
-                            }
-                        }
-                    }}
-                />
-
-                {/* 机构类型：自动带入并设为只读 */}
-                <ProFormText name="org_type" label="机构类型" readonly/>
-
-                {/* 级联逻辑核心区 */}
-                <ProFormDependency name={['org_type']}>
-                    {({org_type}) => {
-                        if (!org_type || !DEPT_MAP[org_type]) {
-                            return null; // 不在银、券、保范围，直接隐藏
-                        }
-                        return (
-                            <ProFormSelect
-                                name="department"
-                                label="部门"
-                                rules={[{required: true, message: '请选择部门'}]}
-                                options={DEPT_MAP[org_type].map(dept => ({label: dept, value: dept}))}
-                            />
-                        );
-                    }}
-                </ProFormDependency>
-
-                <ProFormSelect
-                    name="researcher_id"
-                    label="指派研究员"
-                    rules={[{required: true}]}
-                    request={async () => {
-                        const data = await getResearchers();
-                        return data.map(r => ({label: r.display_name, value: r.id}));
-                    }}
-                />
-
-                <ProFormSwitch name="is_confidential" label="是否保密" initialValue={false}/>
-
-                <ProFormDateTimePicker name="created_at" label="创建时间(支持回溯)" initialValue={Date.now()}/>
-
-                <ProFormTextArea name="description" label="需求详情描述"/>
-            </ProForm>
-        </PageContainer>
-    );
+        <ProCard title="详情描述" bordered headerBordered>
+          <ProFormTextArea name="description" label="补充说明" width="xl" placeholder="请输入需求的详细描述背景等（选填）" fieldProps={{ rows: 4 }} />
+        </ProCard>
+      </ProForm>
+    </PageContainer>
+  );
 };
 
 export default SubmitRequest;
