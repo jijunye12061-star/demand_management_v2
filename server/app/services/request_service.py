@@ -25,13 +25,14 @@ def _scope_filter(user: User, scope: str | None):
     if scope == "feed":
         return and_(Request.status == "completed", Request.is_confidential == 0)
 
-    # scope=mine (default)
+    # scope=mine (default) — 排除已撤回的需求
+    not_canceled = Request.status != "canceled"
     if user.role == "admin":
-        return True
+        return not_canceled
     if user.role == "sales":
-        return Request.sales_id == user.id
+        return and_(Request.sales_id == user.id, not_canceled)
     if user.role == "researcher":
-        return or_(Request.researcher_id == user.id, Request.created_by == user.id)
+        return and_(or_(Request.researcher_id == user.id, Request.created_by == user.id), not_canceled)
     return False
 
 
@@ -155,6 +156,23 @@ def withdraw_request(db: Session, request_id: int, user: User) -> Request:
     if req.status != "pending" or req.researcher_id != user.id:
         raise ValueError("无法撤回此需求")
     req.researcher_id = None
+    req.updated_at = now_beijing()
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+def cancel_request(db: Session, request_id: int, user: User) -> Request:
+    """销售撤回需求: pending → canceled (软删除)"""
+    req = db.get(Request, request_id)
+    if not req:
+        raise ValueError("需求不存在")
+    if req.status != "pending":
+        raise ValueError("需求已在处理中，无法撤回")
+    # 仅允许需求创建者或对应销售撤回
+    if user.role != "admin" and user.id not in (req.created_by, req.sales_id):
+        raise ValueError("无权撤回此需求")
+    req.status = "canceled"
     req.updated_at = now_beijing()
     db.commit()
     db.refresh(req)

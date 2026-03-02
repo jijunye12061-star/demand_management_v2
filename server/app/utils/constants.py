@@ -10,4 +10,4 @@ DEPARTMENT_MAP = {
     "保险": ["母公司", "资管", "其他"],
 }
 
-STATUSES = ["pending", "in_progress", "completed"]
+STATUSES = ["pending", "in_progress", "completed", "canceled"]

@@ -11,7 +11,7 @@ from app.schemas.request import (
     ReassignRequest, ConfidentialRequest,
 )
 from app.services.request_service import (
-    query_requests, accept_request, complete_request, withdraw_request,
+    query_requests, accept_request, complete_request, withdraw_request, cancel_request,
 )
 from app.utils.datetime_utils import now_beijing
 
@@ -164,6 +164,16 @@ def withdraw(request_id: int, db: DB, user: CurrentUser):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "仅研究员可撤回")
     try:
         withdraw_request(db, request_id, user)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    return {"message": "ok"}
+
+
+@router.post("/{request_id}/cancel")
+def cancel(request_id: int, db: DB, user: CurrentUser):
+    """销售撤回需求 (软删除): pending → canceled"""
+    try:
+        cancel_request(db, request_id, user)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     return {"message": "ok"}
