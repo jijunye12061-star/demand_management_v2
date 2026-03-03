@@ -1,5 +1,5 @@
 from fastapi import Request
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import json
 
@@ -10,13 +10,18 @@ class ResponseWrapperMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
 
-        # Don't wrap file/streaming responses or OpenAPI docs
-        if isinstance(response, (StreamingResponse, FileResponse)):
-            return response
+        # Skip OpenAPI docs
         if request.url.path in ("/docs", "/openapi.json", "/redoc"):
             return response
 
-        # Read response body
+        # 关键修复：在读取 body 之前先检查 content-type
+        # call_next() 返回的不再是原始 FileResponse，isinstance 判断无效
+        # 只对 JSON 响应做包装，其余（文件流、HTML 等）直接放行
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            return response
+
+        # 到这里一定是 JSON 响应，安全地读取 body
         body = b""
         async for chunk in response.body_iterator:
             body += chunk if isinstance(chunk, bytes) else chunk.encode()
@@ -24,19 +29,14 @@ class ResponseWrapperMiddleware(BaseHTTPMiddleware):
         if not body:
             return response
 
-        # Only wrap JSON responses
-        content_type = response.headers.get("content-type", "")
-        if "application/json" not in content_type:
-            return response
-
         try:
             data = json.loads(body)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return response
+            return JSONResponse(content=body.decode(errors="replace"), status_code=response.status_code)
 
-        # Already wrapped or error response
+        # Already wrapped
         if isinstance(data, dict) and "code" in data and "data" in data:
-            return response
+            return JSONResponse(content=data, status_code=response.status_code)
 
         # Error responses from HTTPException
         if response.status_code >= 400:

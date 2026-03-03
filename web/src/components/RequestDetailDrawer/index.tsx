@@ -1,4 +1,3 @@
-// web/src/components/RequestDetailDrawer/index.tsx
 import React from 'react';
 import { Drawer, Tag, Typography } from 'antd';
 import { ProDescriptions } from '@ant-design/pro-components';
@@ -12,23 +11,20 @@ interface RequestDetailDrawerProps {
   open: boolean;
   onClose: () => void;
   request: RequestItem | null;
+  /** 控制附件下载按钮行为：mine=直接下载，feed=弹窗选机构 */
+  downloadMode?: 'mine' | 'feed';
 }
 
-const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({ open, onClose, request }) => {
+const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
+  open,
+  onClose,
+  request,
+  downloadMode = 'mine',
+}) => {
   return (
-    <Drawer
-      title="需求详情"
-      width={720}
-      open={open}
-      onClose={onClose}
-      destroyOnClose
-    >
+    <Drawer title="需求详情" width={720} open={open} onClose={onClose} destroyOnClose>
       {request && (
-        <ProDescriptions<RequestItem>
-          column={2}
-          dataSource={request}
-          bordered
-        >
+        <ProDescriptions<RequestItem> column={2} dataSource={request} bordered>
           <ProDescriptions.Item dataIndex="title" label="需求标题" span={2} />
 
           <ProDescriptions.Item label="状态">
@@ -64,15 +60,13 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({ open, onClose
 
           {request.status === 'completed' && (
             <ProDescriptions.Item label="处理结果" span={2}>
-              <Paragraph>
-                {request.result_note || '-'}
-              </Paragraph>
+              <Paragraph>{request.result_note || '-'}</Paragraph>
               {request.attachment_path && (
                 <div style={{ marginTop: 8 }}>
                   <FileDownloadButton
                     requestId={request.id}
-                    // 动态提取原文件名或拼接友好名称
                     fileName={`${request.title}-附件`}
+                    mode={downloadMode}
                   />
                 </div>
               )}

@@ -1,17 +1,16 @@
-﻿import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { PageContainer, ProTable, ActionType, ProColumns, ProFormInstance } from '@ant-design/pro-components';
-import { Button, Tag, message } from 'antd';
+import { Button, message } from 'antd';
 import { ExportOutlined } from '@ant-design/icons';
 import { getRequests, exportRequestsExcel } from '@/services/api';
 import type { RequestItem } from '@/services/typings';
-import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS } from '@/utils/constants';
+import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
 
 const RequestFeed: React.FC = () => {
   const actionRef = useRef<ActionType>(null);
-  // 完美修复 TS 报错
-  const formRef = useRef<ProFormInstance>(null);
+  const formRef = useRef<ProFormInstance>();
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<RequestItem | null>(null);
@@ -28,11 +27,10 @@ const RequestFeed: React.FC = () => {
       link.setAttribute('download', `需求动态导出_${new Date().getTime()}.xlsx`);
       document.body.appendChild(link);
       link.click();
-
       link.parentNode?.removeChild(link);
       window.URL.revokeObjectURL(url);
       message.success('导出成功');
-    } catch (error) {
+    } catch {
       message.error('导出失败，请重试');
     } finally {
       setExporting(false);
@@ -46,9 +44,7 @@ const RequestFeed: React.FC = () => {
       copyable: true,
       ellipsis: true,
       render: (dom, entity) => (
-        <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>
-          {dom}
-        </a>
+        <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>{dom}</a>
       ),
     },
     {
@@ -110,7 +106,6 @@ const RequestFeed: React.FC = () => {
         <a key="view" onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>
           详情
         </a>,
-        // 使用 mode="feed" 触发选择机构弹窗
         entity.status === 'completed' && entity.attachment_path && (
           <FileDownloadButton
             key="download"
@@ -142,8 +137,8 @@ const RequestFeed: React.FC = () => {
             loading={exporting}
             onClick={() => {
               const currentParams = formRef.current?.getFieldsValue() || {};
-              let exportParams = { ...currentParams };
-              if (currentParams.created_at && currentParams.created_at.length === 2) {
+              const exportParams = { ...currentParams };
+              if (currentParams.created_at?.length === 2) {
                 exportParams.date_from = currentParams.created_at[0].format('YYYY-MM-DD');
                 exportParams.date_to = currentParams.created_at[1].format('YYYY-MM-DD');
                 delete exportParams.created_at;
@@ -159,6 +154,7 @@ const RequestFeed: React.FC = () => {
         open={drawerVisible}
         onClose={() => { setDrawerVisible(false); setCurrentRow(null); }}
         request={currentRow}
+        downloadMode="feed"
       />
     </PageContainer>
   );

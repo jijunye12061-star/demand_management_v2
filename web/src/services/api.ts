@@ -9,6 +9,13 @@ export async function getOrganizations(team_id?: number) {
   });
 }
 
+// 获取当前销售名下的机构列表（复用 by-team 接口）
+export async function getMineOrgs() {
+  return request<Organization[]>('/api/v1/organizations/by-team', {
+    method: 'GET',
+  });
+}
+
 // --- Users ---
 export async function getResearchers() {
   return request<Researcher[]>('/api/v1/users/researchers', {
@@ -25,13 +32,10 @@ export async function createRequest(data: Partial<RequestItem>) {
 }
 
 export async function getRequests(params: RequestListParams) {
-  // 注意：后端返回 { items, total }，而 ProTable 期望 { data, total, success }
-  // 我们在 Service 层做一层适配转换
   const res = await request<{ items: RequestItem[]; total: number }>('/api/v1/requests', {
     method: 'GET',
     params: {
       ...params,
-      // 适配 ProTable 默认的分页参数名 (current -> page)
       page: params.current,
       page_size: params.pageSize,
     },
@@ -57,18 +61,11 @@ export async function cancelRequest(id: number) {
   });
 }
 
-// 补充：获取当前销售名下的机构列表 (用于下载附件时选择)
-export async function getMineOrgs() {
-  return request<{ orgs: { id: number; name: string }[] }>('/api/v1/orgs/mine', {
-    method: 'GET',
-  });
-}
-
-// 修改：下载附件接口支持传入 org_name
+// 下载附件，feed 模式下传 org_name 用于追踪
 export async function downloadAttachment(requestId: number, org_name?: string) {
   return request(`/api/v1/files/download/${requestId}`, {
     method: 'GET',
-    params: { org_name }, // 动态传参
+    params: org_name ? { org_name } : undefined,
     responseType: 'blob',
   });
 }

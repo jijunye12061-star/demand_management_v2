@@ -6,7 +6,8 @@ from openpyxl.styles import Font, Alignment, PatternFill
 HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 
-COLUMNS = [
+# 管理端全量导出列
+FULL_COLUMNS = [
     ("ID", "id", 8),
     ("标题", "title", 30),
     ("需求类型", "request_type", 14),
@@ -23,16 +24,32 @@ COLUMNS = [
     ("下载次数", "download_count", 10),
 ]
 
+# 需求动态导出列（脱敏：不含机构名称、销售、工时、下载次数等）
+FEED_COLUMNS = [
+    ("需求标题", "title", 30),
+    ("需求描述", "description", 40),
+    ("机构类型", "org_type", 10),
+    ("需求类型", "request_type", 14),
+    ("研究范围", "research_scope", 12),
+    ("对接研究员", "researcher_name", 12),
+    ("创建时间", "created_at", 18),
+]
+
 STATUS_MAP = {"pending": "待处理", "in_progress": "处理中", "completed": "已完成"}
 
+# 兼容旧调用
+COLUMNS = FULL_COLUMNS
 
-def generate_excel(items: list[dict]) -> io.BytesIO:
+
+def generate_excel(items: list[dict], columns: list[tuple] | None = None) -> io.BytesIO:
+    cols = columns or FULL_COLUMNS
+
     wb = Workbook()
     ws = wb.active
     ws.title = "需求数据"
 
     # Header
-    for col_idx, (label, _, width) in enumerate(COLUMNS, 1):
+    for col_idx, (label, _, width) in enumerate(cols, 1):
         cell = ws.cell(row=1, column=col_idx, value=label)
         cell.font = HEADER_FONT
         cell.fill = HEADER_FILL
@@ -41,7 +58,7 @@ def generate_excel(items: list[dict]) -> io.BytesIO:
 
     # Data rows
     for row_idx, item in enumerate(items, 2):
-        for col_idx, (_, key, _) in enumerate(COLUMNS, 1):
+        for col_idx, (_, key, _) in enumerate(cols, 1):
             value = item.get(key, "")
             if key == "status":
                 value = STATUS_MAP.get(value, value)
