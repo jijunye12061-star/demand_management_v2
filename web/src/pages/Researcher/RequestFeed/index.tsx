@@ -1,4 +1,13 @@
-﻿export default function RequestFeed() {
-  return <div>RequestFeed 页面占位</div>;
-}
+import React from 'react';
+import { PageContainer } from '@ant-design/pro-components';
+import RequestFeedTable from '@/components/RequestFeedTable';
 
+const RequestFeed: React.FC = () => {
+  return (
+    <PageContainer title="需求动态大厅">
+      <RequestFeedTable downloadMode="researcher-feed" />
+    </PageContainer>
+  );
+};
+
+export default RequestFeed;

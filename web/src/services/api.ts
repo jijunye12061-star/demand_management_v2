@@ -1,5 +1,5 @@
 import { request } from '@umijs/max';
-import type { Organization, Researcher, RequestItem, RequestListParams } from './typings';
+import type { Organization, Researcher, SalesUser, RequestItem, RequestListParams } from './typings';
 
 // --- Organizations ---
 export async function getOrganizations(team_id?: number) {
@@ -9,7 +9,6 @@ export async function getOrganizations(team_id?: number) {
   });
 }
 
-// 获取当前销售名下的机构列表（复用 by-team 接口）
 export async function getMineOrgs() {
   return request<Organization[]>('/api/v1/organizations/by-team', {
     method: 'GET',
@@ -19,6 +18,12 @@ export async function getMineOrgs() {
 // --- Users ---
 export async function getResearchers() {
   return request<Researcher[]>('/api/v1/users/researchers', {
+    method: 'GET',
+  });
+}
+
+export async function getSales() {
+  return request<SalesUser[]>('/api/v1/users/sales', {
     method: 'GET',
   });
 }
@@ -58,6 +63,29 @@ export async function exportRequestsExcel(params: RequestListParams) {
 export async function cancelRequest(id: number) {
   return request(`/api/v1/requests/${id}/cancel`, {
     method: 'POST',
+  });
+}
+
+export async function acceptRequest(id: number) {
+  return request(`/api/v1/requests/${id}/accept`, {
+    method: 'POST',
+  });
+}
+
+export async function completeRequest(
+  id: number,
+  data: { result_note?: string; work_hours?: number; attachment?: File },
+) {
+  const formData = new FormData();
+  if (data.result_note) formData.append('result_note', data.result_note);
+  if (data.work_hours !== undefined) formData.append('work_hours', String(data.work_hours));
+  if (data.attachment) formData.append('attachment', data.attachment);
+
+  return request(`/api/v1/requests/${id}/complete`, {
+    method: 'POST',
+    data: formData,
+    // Let browser set Content-Type with boundary for multipart
+    requestType: 'form',
   });
 }
 

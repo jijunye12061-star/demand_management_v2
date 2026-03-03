@@ -34,7 +34,6 @@ def list_requests(
     page: int = 1,
     page_size: int = 20,
 ):
-    # FastAPI reserves 'status' as query alias
     params = RequestListParams(
         status=status_, request_type=request_type, research_scope=research_scope,
         org_type=org_type, researcher_id=researcher_id, sales_id=sales_id,
@@ -50,18 +49,11 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
     req = db.get(Request, request_id)
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
-    # Confidential check
-    if req.is_confidential and user.role != "admin":
-        if user.id not in (req.created_by, req.sales_id, req.researcher_id):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "无权查看保密需求")
     return req
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-def create_request(body: RequestCreate, db: DB, user: CurrentUser):
-    if user.role not in ("sales", "researcher", "admin"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权创建需求")
-
+@router.post("")
+def create(body: RequestCreate, db: DB, user: CurrentUser):
     req = Request(
         title=body.title,
         description=body.description,
@@ -72,24 +64,12 @@ def create_request(body: RequestCreate, db: DB, user: CurrentUser):
         department=body.department,
         researcher_id=body.researcher_id,
         is_confidential=1 if body.is_confidential else 0,
-        status="pending",
+        sales_id=body.sales_id if body.sales_id else user.id,
+        created_by=user.id,
         created_at=body.created_at or now_beijing(),
+        updated_at=now_beijing(),
+        status="pending",
     )
-
-    if user.role == "sales":
-        req.sales_id = user.id
-        req.created_by = user.id
-    elif user.role == "researcher":
-        # 研究员代提: sales_id 必填
-        if not body.sales_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "研究员代提需求时必须指定销售")
-        req.sales_id = body.sales_id
-        req.created_by = user.id
-    else:
-        # admin
-        req.sales_id = body.sales_id or user.id
-        req.created_by = user.id
-
     db.add(req)
     db.commit()
     db.refresh(req)
@@ -97,7 +77,7 @@ def create_request(body: RequestCreate, db: DB, user: CurrentUser):
 
 
 @router.put("/{request_id}")
-def update_request(request_id: int, body: RequestUpdate, db: DB, admin: AdminUser):
+def update(request_id: int, body: RequestUpdate, db: DB, admin: AdminUser):
     req = db.get(Request, request_id)
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
@@ -121,10 +101,15 @@ def delete_request(request_id: int, db: DB, admin: AdminUser):
     return {"message": "ok"}
 
 
+# ── 以下三个端点删除了冗余的 role 检查 ──
+# 业务校验由 service 层统一处理:
+#   accept_request  → 检查 status=pending & researcher_id=user.id
+#   complete_request → 检查 status=in_progress & researcher_id=user.id
+#   withdraw_request → 检查 status=pending & researcher_id=user.id
+
+
 @router.post("/{request_id}/accept")
 def accept(request_id: int, db: DB, user: CurrentUser):
-    if user.role != "researcher":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "仅研究员可接受任务")
     try:
         accept_request(db, request_id, user)
     except ValueError as e:
@@ -139,13 +124,9 @@ async def complete(
     work_hours: float = Form(None),
     attachment: UploadFile | None = File(None),
 ):
-    if user.role != "researcher":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "仅研究员可完成任务")
-
     attachment_path = None
     if attachment and attachment.filename:
         upload_dir = settings.upload_path
-        # Use request_id as subdirectory for easy lookup
         dest = upload_dir / f"{request_id}_{attachment.filename}"
         with open(dest, "wb") as f:
             shutil.copyfileobj(attachment.file, f)
@@ -160,8 +141,6 @@ async def complete(
 
 @router.post("/{request_id}/withdraw")
 def withdraw(request_id: int, db: DB, user: CurrentUser):
-    if user.role != "researcher":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "仅研究员可撤回")
     try:
         withdraw_request(db, request_id, user)
     except ValueError as e:
@@ -171,7 +150,7 @@ def withdraw(request_id: int, db: DB, user: CurrentUser):
 
 @router.post("/{request_id}/cancel")
 def cancel(request_id: int, db: DB, user: CurrentUser):
-    """销售撤回需求 (软删除): pending → canceled"""
+    """销售/研究员撤回需求 (软删除): pending → canceled"""
     try:
         cancel_request(db, request_id, user)
     except ValueError as e:

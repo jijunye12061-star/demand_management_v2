@@ -8,7 +8,8 @@ interface FileDownloadButtonProps {
   fileName?: string;
   size?: 'large' | 'middle' | 'small';
   type?: 'primary' | 'default' | 'dashed' | 'link' | 'text';
-  mode?: 'mine' | 'feed';
+  /** mine=直接下载, feed=弹窗选机构(销售), researcher-feed=固定"内部学习" */
+  mode?: 'mine' | 'feed' | 'researcher-feed';
 }
 
 const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
@@ -54,12 +55,14 @@ const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
   const handleClick = async () => {
     if (mode === 'mine') {
       triggerDownload();
+    } else if (mode === 'researcher-feed') {
+      // 研究端 feed：固定"内部学习"，直接下载
+      triggerDownload('内部学习');
     } else {
-      // feed 模式：弹窗选机构
+      // 销售端 feed：弹窗选机构
       setModalVisible(true);
       setFetchingOrgs(true);
       try {
-        // getMineOrgs 返回 Organization[]（复用 /organizations/by-team）
         const data = await getMineOrgs();
         setOrgs(Array.isArray(data) ? data.map((o) => ({ id: o.id, name: o.name })) : []);
       } catch {

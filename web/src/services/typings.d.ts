@@ -10,6 +10,12 @@ export interface Researcher {
   display_name: string;
 }
 
+export interface SalesUser {
+  id: number;
+  display_name: string;
+  team_id: number;
+}
+
 export interface RequestItem {
   id: number;
   title: string;
@@ -19,10 +25,11 @@ export interface RequestItem {
   org_name: string;
   org_type?: string;
   department?: string;
+  sales_id?: number;
   researcher_id: number;
   is_confidential?: boolean;
   created_at?: string;
-  status: 'pending' | 'in_progress' | 'completed';
+  status: 'pending' | 'in_progress' | 'completed' | 'canceled';
   result_note?: string;
   attachment_path?: string;
   work_hours?: number;

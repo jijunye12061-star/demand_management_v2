@@ -1,8 +1,6 @@
 import React, { useMemo } from 'react';
-import { ProCard, StatisticCard } from '@ant-design/pro-components';
+import { StatisticCard } from '@ant-design/pro-components';
 import type { RequestItem } from '@/services/typings';
-
-const { Statistic } = StatisticCard;
 
 interface StatsCardsProps {
   items: RequestItem[];
@@ -21,32 +19,47 @@ const StatsCards: React.FC<StatsCardsProps> = ({ items, loading = false }) => {
   }, [items]);
 
   return (
-    <ProCard gutter={16} ghost style={{ marginBottom: 16 }}>
-      <ProCard colSpan={6} loading={loading}>
-        <Statistic title="总需求数" value={stats.total} />
-      </ProCard>
-      <ProCard colSpan={6} loading={loading}>
-        <Statistic
-          title="待处理"
-          value={stats.pending}
-          valueStyle={{ color: '#faad14' }} // 橙色 Warning
-        />
-      </ProCard>
-      <ProCard colSpan={6} loading={loading}>
-        <Statistic
-          title="处理中"
-          value={stats.inProgress}
-          valueStyle={{ color: '#1890ff' }} // 蓝色 Processing
-        />
-      </ProCard>
-      <ProCard colSpan={6} loading={loading}>
-        <Statistic
-          title="已完成"
-          value={stats.completed}
-          valueStyle={{ color: '#52c41a' }} // 绿色 Success
-        />
-      </ProCard>
-    </ProCard>
+    <StatisticCard.Group
+      direction="row"
+      style={{ marginBottom: 16 }}
+      loading={loading}
+    >
+      <StatisticCard
+        statistic={{
+          title: '总需求数',
+          value: stats.total,
+          layout: 'vertical', // 让标题和数值垂直排列，间距更标准
+        }}
+      />
+
+      {/* 默认带分割线，如果觉得太密可以加上 divider={false} */}
+      <StatisticCard
+        statistic={{
+          title: '待处理',
+          value: stats.pending,
+          valueStyle: { color: '#faad14' }, // 橙色 Warning
+          layout: 'vertical',
+        }}
+      />
+
+      <StatisticCard
+        statistic={{
+          title: '处理中',
+          value: stats.inProgress,
+          valueStyle: { color: '#1890ff' }, // 蓝色 Processing
+          layout: 'vertical',
+        }}
+      />
+
+      <StatisticCard
+        statistic={{
+          title: '已完成',
+          value: stats.completed,
+          valueStyle: { color: '#52c41a' }, // 绿色 Success
+          layout: 'vertical',
+        }}
+      />
+    </StatisticCard.Group>
   );
 };
 

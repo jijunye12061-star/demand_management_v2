@@ -11,8 +11,8 @@ interface RequestDetailDrawerProps {
   open: boolean;
   onClose: () => void;
   request: RequestItem | null;
-  /** 控制附件下载按钮行为：mine=直接下载，feed=弹窗选机构 */
-  downloadMode?: 'mine' | 'feed';
+  /** 控制附件下载按钮行为 */
+  downloadMode?: 'mine' | 'feed' | 'researcher-feed';
 }
 
 const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
