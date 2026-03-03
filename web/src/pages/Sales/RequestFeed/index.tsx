@@ -10,7 +10,7 @@ import FileDownloadButton from '@/components/FileDownloadButton';
 
 const RequestFeed: React.FC = () => {
   const actionRef = useRef<ActionType>(null);
-  const formRef = useRef<ProFormInstance>();
+  const formRef = useRef<ProFormInstance>(undefined);
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<RequestItem | null>(null);

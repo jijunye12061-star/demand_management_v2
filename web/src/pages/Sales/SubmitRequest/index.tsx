@@ -9,7 +9,7 @@ import {
   ProFormDateTimePicker,
   ProFormDependency,
 } from '@ant-design/pro-components';
-import { message, Form, Modal, Card } from 'antd';
+import { message, Form, Modal, Card, App } from 'antd';
 import { useNavigate } from '@umijs/max';
 import { getOrganizations, getResearchers, createRequest } from '@/services/api';
 import type { Organization } from '@/services/typings';
@@ -20,19 +20,20 @@ const SubmitRequest: React.FC = () => {
   const [form] = Form.useForm();
   const navigate = useNavigate();
   const [orgList, setOrgList] = useState<Organization[]>([]);
+  const { modal, message } = App.useApp();  // ← 加这一行
 
   const handleFinish = async (values: any) => {
-    try {
-      const payload = {
-        ...values,
-        created_at: values.created_at
-          ? dayjs(values.created_at).format('YYYY-MM-DD HH:mm:ss')
-          : undefined,
-      };
+    const payload = {
+      ...values,
+      created_at: values.created_at
+        ? dayjs(values.created_at).format('YYYY-MM-DD HH:mm:ss')
+        : undefined,
+    };
 
-      await createRequest(payload);
+    const res = await createRequest(payload);
 
-      Modal.success({
+    if (res?.id) {
+      modal.success({                        // ← Modal.success 改成 modal.success
         title: '需求提交成功！',
         content: '您的需求已发送给研究端，可在「我的需求」中随时追踪进度。',
         okText: '查看我的需求',
@@ -41,13 +42,11 @@ const SubmitRequest: React.FC = () => {
         onOk: () => navigate('/sales/mine'),
         onCancel: () => form.resetFields(),
       });
-
       return true;
-    } catch (error) {
-      console.error('提交失败:', error);
-      message.error('提交失败，请重试');
-      return false;
     }
+
+    message.error('提交失败，请重试');         // ← 同理
+    return false;
   };
 
   return (
