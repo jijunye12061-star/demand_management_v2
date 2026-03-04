@@ -52,11 +52,19 @@ export async function getRequests(params: RequestListParams) {
   };
 }
 
-export async function exportRequestsExcel(params: RequestListParams) {
-  return request('/api/v1/exports/requests', {
-    method: 'GET',
-    params,
-    responseType: 'blob',
+/** 编辑需求 (sales: 仅 pending/withdrawn 自己的; admin: 任意) */
+export async function updateRequest(id: number, data: Partial<RequestItem>) {
+  return request(`/api/v1/requests/${id}`, {
+    method: 'PUT',
+    data,
+  });
+}
+
+/** 重新提交 (withdrawn → pending, 可同时更新字段) */
+export async function resubmitRequest(id: number, data: Partial<RequestItem>) {
+  return request(`/api/v1/requests/${id}/resubmit`, {
+    method: 'POST',
+    data,
   });
 }
 
@@ -72,6 +80,14 @@ export async function acceptRequest(id: number) {
   });
 }
 
+/** 研究员退回需求 */
+export async function withdrawRequest(id: number, reason: string) {
+  return request(`/api/v1/requests/${id}/withdraw`, {
+    method: 'POST',
+    data: { reason },
+  });
+}
+
 export async function completeRequest(
   id: number,
   data: { result_note?: string; work_hours?: number; attachment?: File },
@@ -84,8 +100,15 @@ export async function completeRequest(
   return request(`/api/v1/requests/${id}/complete`, {
     method: 'POST',
     data: formData,
-    // Let browser set Content-Type with boundary for multipart
     requestType: 'form',
+  });
+}
+
+export async function exportRequestsExcel(params: RequestListParams) {
+  return request('/api/v1/exports/requests', {
+    method: 'GET',
+    params,
+    responseType: 'blob',
   });
 }
 

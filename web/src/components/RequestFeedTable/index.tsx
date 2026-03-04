@@ -1,42 +1,47 @@
 import React, { useRef, useState } from 'react';
-import { PageContainer, ProTable } from '@ant-design/pro-components';
-import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { Button, App } from 'antd';
-import { DownloadOutlined } from '@ant-design/icons';
+import { ProTable, ActionType, ProColumns, ProFormInstance } from '@ant-design/pro-components';
+import { Button, message } from 'antd';
+import { ExportOutlined } from '@ant-design/icons';
 import { getRequests, exportRequestsExcel } from '@/services/api';
 import type { RequestItem } from '@/services/typings';
 import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
 
-const RequestFeed: React.FC = () => {
-  const { message } = App.useApp();
+interface RequestFeedTableProps {
+  /** 控制下载按钮模式：销售用 feed (弹窗选机构)，研究员用 researcher-feed (固定内部学习) */
+  downloadMode?: 'feed' | 'researcher-feed';
+}
+
+const RequestFeedTable: React.FC<RequestFeedTableProps> = ({ downloadMode = 'feed' }) => {
   const actionRef = useRef<ActionType>(null);
+  const formRef = useRef<ProFormInstance>(undefined);
+
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<RequestItem | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  const handleExport = async () => {
+  const handleExport = async (params: any) => {
     try {
       setExporting(true);
-      const blob = await exportRequestsExcel({ scope: 'feed' });
+      const blob = await exportRequestsExcel({ ...params, scope: 'feed' });
+
       const url = window.URL.createObjectURL(new Blob([blob]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', '需求动态导出.xlsx');
+      link.setAttribute('download', `需求动态导出_${new Date().getTime()}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
       window.URL.revokeObjectURL(url);
       message.success('导出成功');
     } catch {
-      message.error('导出失败');
+      message.error('导出失败，请重试');
     } finally {
       setExporting(false);
     }
   };
 
-  // feed 模式表格列 — 隐藏 org_name, department, work_hours, sales_name
   const columns: ProColumns<RequestItem>[] = [
     {
       title: '需求标题',
@@ -45,18 +50,6 @@ const RequestFeed: React.FC = () => {
       render: (dom, entity) => (
         <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>{dom}</a>
       ),
-    },
-    {
-      title: '关键字搜索',
-      dataIndex: 'keyword',
-      hideInTable: true,
-      fieldProps: { placeholder: '支持标题/描述模糊搜索' },
-    },
-    {
-      title: '需求描述',
-      dataIndex: 'description',
-      ellipsis: true,
-      hideInSearch: true,
     },
     {
       title: '需求类型',
@@ -74,9 +67,19 @@ const RequestFeed: React.FC = () => {
       title: '机构类型',
       dataIndex: 'org_type',
       valueType: 'select',
-      fieldProps: {
-        options: ['银行', '券商', '保险', '理财', 'FOF'].map((t) => ({ label: t, value: t })),
+      valueEnum: {
+        '银行': { text: '银行' },
+        '券商': { text: '券商' },
+        '保险': { text: '保险' },
+        '私募': { text: '私募' },
+        '外资': { text: '外资' },
+        '其他': { text: '其他' },
       },
+    },
+    {
+      title: '机构名称',
+      dataIndex: 'org_name',
+      hideInSearch: true,
     },
     {
       title: '研究员',
@@ -86,21 +89,17 @@ const RequestFeed: React.FC = () => {
     {
       title: '完成时间',
       dataIndex: 'completed_at',
-      valueType: 'dateTime',
-      hideInSearch: true,
-      sorter: true,
-    },
-    {
-      title: '日期范围',
-      dataIndex: 'dateRange',
       valueType: 'dateRange',
       hideInTable: true,
       search: {
-        transform: (value) => ({
-          date_from: value[0],
-          date_to: value[1],
-        }),
+        transform: (value) => ({ date_from: value[0], date_to: value[1] }),
       },
+    },
+    {
+      title: '完成时间',
+      dataIndex: 'completed_at',
+      valueType: 'dateTime',
+      hideInSearch: true,
     },
     {
       title: '操作',
@@ -108,13 +107,10 @@ const RequestFeed: React.FC = () => {
       key: 'option',
       width: 120,
       render: (_, entity) => [
-        <a key="view" onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>
-          详情
-        </a>,
-        entity.attachment_path && (
+        entity.status === 'completed' && entity.attachment_path && (
           <FileDownloadButton
             key="download"
-            mode="feed"
+            mode={downloadMode}
             requestId={entity.id}
             fileName={`${entity.title}-附件`}
             size="small"
@@ -125,34 +121,44 @@ const RequestFeed: React.FC = () => {
   ];
 
   return (
-    <PageContainer title="需求动态">
+    <>
       <ProTable<RequestItem>
-        headerTitle="已完成的公开需求"
+        formRef={formRef}
+        headerTitle="公开需求列表"
         actionRef={actionRef}
         rowKey="id"
-        search={{ labelWidth: 100 }}
+        search={{ labelWidth: 80 }}
         request={async (params) => getRequests({ ...params, scope: 'feed' })}
         columns={columns}
         toolBarRender={() => [
           <Button
             key="export"
-            icon={<DownloadOutlined />}
+            type="primary"
+            icon={<ExportOutlined />}
             loading={exporting}
-            onClick={handleExport}
+            onClick={() => {
+              const currentParams = formRef.current?.getFieldsValue() || {};
+              const exportParams = { ...currentParams };
+              if (currentParams.completed_at?.length === 2) {
+                exportParams.date_from = currentParams.completed_at[0].format('YYYY-MM-DD');
+                exportParams.date_to = currentParams.completed_at[1].format('YYYY-MM-DD');
+                delete exportParams.completed_at;
+              }
+              handleExport(exportParams);
+            }}
           >
             导出 Excel
           </Button>,
         ]}
       />
-
       <RequestDetailDrawer
         open={drawerVisible}
         onClose={() => { setDrawerVisible(false); setCurrentRow(null); }}
         request={currentRow}
-        downloadMode="feed"
+        downloadMode={downloadMode}
       />
-    </PageContainer>
+    </>
   );
 };
 
-export default RequestFeed;
+export default RequestFeedTable;

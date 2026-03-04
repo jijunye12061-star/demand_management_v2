@@ -29,7 +29,7 @@ export interface RequestItem {
   researcher_id: number;
   is_confidential?: boolean;
   created_at?: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'canceled';
+  status: 'pending' | 'in_progress' | 'completed' | 'withdrawn' | 'canceled';
   result_note?: string;
   attachment_path?: string;
   work_hours?: number;
@@ -39,6 +39,7 @@ export interface RequestItem {
   sales_name?: string;
   researcher_name?: string;
   download_count?: number;
+  withdraw_reason?: string;
 }
 
 export interface RequestListParams {

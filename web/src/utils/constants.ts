@@ -1,7 +1,10 @@
-export const STATUS_ENUM = {
+// 需求状态枚举 — 5 种状态全覆盖
+export const STATUS_ENUM: Record<string, { text: string; status: string }> = {
   pending: { text: '待处理', status: 'Warning' },
   in_progress: { text: '处理中', status: 'Processing' },
   completed: { text: '已完成', status: 'Success' },
+  withdrawn: { text: '已退回', status: 'Error' },
+  canceled: { text: '已取消', status: 'Default' },
 };
 
 // 需求类型选项

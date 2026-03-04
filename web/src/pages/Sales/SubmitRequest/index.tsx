@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   PageContainer,
   ProForm,
@@ -9,7 +9,7 @@ import {
   ProFormDateTimePicker,
   ProFormDependency,
 } from '@ant-design/pro-components';
-import { message, Form, Modal, Card, App } from 'antd';
+import { Form, Card, App } from 'antd';
 import { useNavigate } from '@umijs/max';
 import { getOrganizations, getResearchers, createRequest } from '@/services/api';
 import type { Organization } from '@/services/typings';
@@ -20,7 +20,7 @@ const SubmitRequest: React.FC = () => {
   const [form] = Form.useForm();
   const navigate = useNavigate();
   const [orgList, setOrgList] = useState<Organization[]>([]);
-  const { modal, message } = App.useApp();  // ← 加这一行
+  const { modal, message } = App.useApp();
 
   const handleFinish = async (values: any) => {
     const payload = {
@@ -33,7 +33,7 @@ const SubmitRequest: React.FC = () => {
     const res = await createRequest(payload);
 
     if (res?.id) {
-      modal.success({                        // ← Modal.success 改成 modal.success
+      modal.success({
         title: '需求提交成功！',
         content: '您的需求已发送给研究端，可在「我的需求」中随时追踪进度。',
         okText: '查看我的需求',
@@ -45,7 +45,7 @@ const SubmitRequest: React.FC = () => {
       return true;
     }
 
-    message.error('提交失败，请重试');         // ← 同理
+    message.error('提交失败，请重试');
     return false;
   };
 
@@ -68,107 +68,98 @@ const SubmitRequest: React.FC = () => {
           <ProFormText
             name="title"
             label="需求标题"
-            colProps={{ span: 16 }}
             rules={[{ required: true, message: '请输入需求标题' }]}
-            placeholder="请输入需求标题"
+            colProps={{ span: 16 }}
           />
           <ProFormDateTimePicker
             name="created_at"
             label="提单时间"
             colProps={{ span: 8 }}
-            rules={[{ required: true }]}
-            tooltip="默认当前，支持回溯"
+            fieldProps={{ style: { width: '100%' } }}
           />
 
-          {/* 第二行：需求描述（必填，跟在标题下方） */}
-          <ProFormTextArea
-            name="description"
-            label="需求描述"
-            colProps={{ span: 24 }}
-            rules={[{ required: true, message: '请输入需求描述' }]}
-            placeholder="请输入需求的详细背景、目标和要求"
-            fieldProps={{ rows: 3 }}
-          />
-
-          {/* 第三行：需求类型 + 研究范围 */}
+          {/* 第二行：需求类型 + 研究范围 */}
           <ProFormSelect
             name="request_type"
             label="需求类型"
-            colProps={{ span: 12 }}
             options={REQUEST_TYPE_OPTIONS}
             rules={[{ required: true, message: '请选择需求类型' }]}
+            colProps={{ span: 12 }}
           />
           <ProFormSelect
             name="research_scope"
             label="研究范围"
-            colProps={{ span: 12 }}
             options={RESEARCH_SCOPE_OPTIONS}
-            placeholder="请选择研究范围"
+            colProps={{ span: 12 }}
           />
 
-          {/* 第四行：目标机构 + 机构类型（只读） */}
+          {/* 第三行：机构 + 机构类型(自动) + 部门(级联) */}
           <ProFormSelect
             name="org_name"
-            label="目标机构"
-            colProps={{ span: 12 }}
-            rules={[{ required: true, message: '请选择目标机构' }]}
-            request={async () => {
-              const data = await getOrganizations();
-              setOrgList(data);
-              return data.map((org) => ({ label: org.name, value: org.name }));
-            }}
+            label="机构名称"
+            rules={[{ required: true, message: '请选择机构' }]}
+            colProps={{ span: 8 }}
             fieldProps={{
               showSearch: true,
-              onChange: (value: string) => {
-                const selected = orgList.find((org) => org.name === value);
-                if (selected) {
-                  form.setFieldsValue({ org_type: selected.org_type, department: undefined });
-                }
+              onChange: (val: string) => {
+                const org = orgList.find((o) => o.name === val);
+                form.setFieldsValue({
+                  org_type: org?.org_type || undefined,
+                  department: undefined,
+                });
               },
+            }}
+            request={async () => {
+              const orgs = await getOrganizations();
+              setOrgList(orgs);
+              return orgs.map((o) => ({ label: o.name, value: o.name }));
             }}
           />
           <ProFormText
             name="org_type"
             label="机构类型"
-            colProps={{ span: 12 }}
-            readonly
-            placeholder="选择机构后自动带入"
+            colProps={{ span: 8 }}
+            disabled
+            fieldProps={{ placeholder: '选择机构后自动填入' }}
           />
-
-          {/* 条件行：部门（仅银行/券商/保险） */}
           <ProFormDependency name={['org_type']}>
             {({ org_type }) => {
-              const departments = org_type ? ORG_DEPARTMENT_MAP[org_type] : [];
-              if (!departments?.length) return null;
+              const depts = ORG_DEPARTMENT_MAP[org_type];
+              if (!depts) return <ProFormText name="department" label="对接部门" colProps={{ span: 8 }} disabled fieldProps={{ placeholder: '该机构类型无部门选项' }} />;
               return (
                 <ProFormSelect
                   name="department"
                   label="对接部门"
-                  colProps={{ span: 12 }}
-                  options={departments.map((d: string) => ({ label: d, value: d }))}
-                  rules={[{ required: true, message: '请选择对接部门' }]}
+                  colProps={{ span: 8 }}
+                  options={depts.map((d) => ({ label: d, value: d }))}
                 />
               );
             }}
           </ProFormDependency>
 
-          {/* 第五行：研究员 + 保密开关 */}
+          {/* 第四行：研究员 + 保密 */}
           <ProFormSelect
             name="researcher_id"
-            label="指定研究员"
-            colProps={{ span: 12 }}
+            label="对接研究员"
             rules={[{ required: true, message: '请选择研究员' }]}
+            colProps={{ span: 16 }}
             request={async () => {
-              const data = await getResearchers();
-              return data.map((u) => ({ label: u.display_name, value: u.id }));
+              const list = await getResearchers();
+              return list.map((r) => ({ label: r.display_name, value: r.id }));
             }}
-            fieldProps={{ showSearch: true }}
           />
           <ProFormSwitch
             name="is_confidential"
-            label="严格保密"
-            colProps={{ span: 12 }}
-            tooltip="开启后，需求动态大厅不可见"
+            label="保密需求"
+            colProps={{ span: 8 }}
+          />
+
+          {/* 第五行：描述 */}
+          <ProFormTextArea
+            name="description"
+            label="需求描述"
+            colProps={{ span: 24 }}
+            fieldProps={{ rows: 4, placeholder: '请详细描述您的需求...' }}
           />
         </ProForm>
       </Card>
