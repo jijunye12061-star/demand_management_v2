@@ -18,5 +18,10 @@ class Settings(BaseSettings):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
+    @property
+    def data_path(self) -> Path:
+        """附件相对路径的根目录 (upload_path 的父目录, 即 ./data)"""
+        return self.upload_path.parent
+
 
 settings = Settings()

@@ -30,20 +30,32 @@ def download_file(
         if user.id not in (req.created_by, req.sales_id, req.researcher_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "无权下载")
 
-    path = Path(req.attachment_path)
+    # FIX: attachment_path 存储的是 "uploads/{id}/filename" 相对路径,
+    # 需拼接 data_path (即 ./data) 得到实际文件路径
+    path = settings.data_path / req.attachment_path
     if not path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "文件不存在")
 
-    # 记录下载日志：feed 模式传入 org_name，否则用需求自身的 org_name
-    log_download(db, request_id, user, org_name=org_name)
+    # 记录下载日志: org_name 直接透传, 研究员/admin 不传则为 null
+    log_download(db, request_id, user.id, org_name=org_name)
 
     return FileResponse(path, filename=path.name, media_type="application/octet-stream")
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    upload_dir = settings.upload_path
-    dest = upload_dir / file.filename
+async def upload_file(
+    file: UploadFile = File(...),
+    request_id: int | None = Query(None, description="关联的需求 ID, 用于按需求建子目录"),
+):
+    """备用上传接口。主上传在 POST /requests/{id}/complete 中。"""
+    if request_id:
+        dest_dir = settings.upload_path / str(request_id)
+    else:
+        dest_dir = settings.upload_path
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / file.filename
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
-    return {"path": str(dest)}
+    # 返回相对路径, 与 complete 接口保持一致
+    rel = f"uploads/{request_id}/{file.filename}" if request_id else f"uploads/{file.filename}"
+    return {"path": rel}

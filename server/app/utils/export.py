@@ -24,7 +24,7 @@ FULL_COLUMNS = [
     ("下载次数", "download_count", 10),
 ]
 
-# 需求动态导出列（脱敏：不含机构名称、销售、工时、下载次数等）
+# FIX: 需求动态导出列 — api.md §8 明确要求 completed_at 而非 created_at
 FEED_COLUMNS = [
     ("需求标题", "title", 30),
     ("需求描述", "description", 40),
@@ -32,10 +32,17 @@ FEED_COLUMNS = [
     ("需求类型", "request_type", 14),
     ("研究范围", "research_scope", 12),
     ("对接研究员", "researcher_name", 12),
-    ("创建时间", "created_at", 18),
+    ("完成时间", "completed_at", 18),
 ]
 
-STATUS_MAP = {"pending": "待处理", "in_progress": "处理中", "completed": "已完成"}
+# FIX: 补全 withdrawn / canceled, admin 全量导出会用到
+STATUS_MAP = {
+    "pending": "待处理",
+    "in_progress": "处理中",
+    "completed": "已完成",
+    "withdrawn": "已退回",
+    "canceled": "已取消",
+}
 
 # 兼容旧调用
 COLUMNS = FULL_COLUMNS

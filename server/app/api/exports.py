@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
-from app.core.deps import DB, CurrentUser
+from app.core.deps import DB, CurrentUser, AdminUser
 from app.schemas.request import RequestListParams
 from app.services.request_service import query_requests
 from app.utils.export import generate_excel, FEED_COLUMNS
@@ -23,8 +23,10 @@ def export_requests(
     date_to: str | None = None,
     status_filter: str | None = Query(None, alias="status"),
 ):
-    if scope != "feed" and user.role != "admin":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
+    # FIX: 非 admin 强制 scope=feed, 而非 403 拒绝
+    if user.role != "admin":
+        scope = "feed"
+
     params = RequestListParams(
         scope=scope, status=status_filter, request_type=request_type,
         research_scope=research_scope, org_type=org_type,
@@ -41,10 +43,10 @@ def export_requests(
     )
 
 
+# FIX: preview 严格 admin-only, 使用 AdminUser 依赖注入
 @router.get("/requests/preview")
 def export_preview(
-    db: DB, user: CurrentUser,
-    scope: str | None = None,
+    db: DB, admin: AdminUser,
     request_type: str | None = None,
     research_scope: str | None = None,
     org_type: str | None = None,
@@ -55,14 +57,12 @@ def export_preview(
     date_to: str | None = None,
     status_filter: str | None = Query(None, alias="status"),
 ):
-    if scope != "feed" and user.role != "admin":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
     params = RequestListParams(
-        scope=scope, status=status_filter, request_type=request_type,
+        status=status_filter, request_type=request_type,
         research_scope=research_scope, org_type=org_type,
         researcher_id=researcher_id, sales_id=sales_id,
         keyword=keyword, date_from=date_from, date_to=date_to,
         page=1, page_size=20,
     )
-    items, total = query_requests(db, user, params)
+    items, total = query_requests(db, admin, params)
     return {"items": items, "total": total}
