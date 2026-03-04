@@ -31,6 +31,8 @@ def require_role(*roles: str):
         if current_user.role not in roles:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
         return current_user
+    # @wraps 无法直接装饰内部函数（需要包裹体），手动拷贝 __name__ 供 FastAPI 生成唯一依赖 key
+    checker.__name__ = f"require_role_{'_'.join(roles)}"
     return checker
 
 
