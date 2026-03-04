@@ -22,6 +22,7 @@ class Request(Base):
     result_note: Mapped[str | None] = mapped_column(Text)
     attachment_path: Mapped[str | None] = mapped_column(Text)
     work_hours: Mapped[float] = mapped_column(Float, default=0)
+    withdraw_reason: Mapped[str | None] = mapped_column(Text)  # 研究员退回原因
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)

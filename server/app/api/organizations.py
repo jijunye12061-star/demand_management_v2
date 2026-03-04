@@ -21,9 +21,11 @@ def list_organizations(db: DB, admin: AdminUser, team_id: int | None = None):
 
 @router.get("/by-team", response_model=list[OrgResponse])
 def list_orgs_by_user_team(db: DB, user: CurrentUser, team_id: int | None = None):
-    """Get orgs for current user's team, or specified team_id (for researcher proxy submit)."""
     tid = team_id or user.team_id
     if not tid:
+        # admin 无 team_id 时返回全部
+        if user.role == "admin":
+            return db.execute(select(Organization).order_by(Organization.name)).scalars().all()
         return []
     org_ids = db.execute(select(TeamOrgMapping.org_id).where(TeamOrgMapping.team_id == tid)).scalars().all()
     if not org_ids:

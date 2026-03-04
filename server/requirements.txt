@@ -4,7 +4,9 @@ sqlalchemy>=2.0
 pydantic>=2.9
 pydantic-settings
 python-jose[cryptography]
-passlib[bcrypt]
+bcrypt
 python-multipart
 openpyxl
 apscheduler
+httpx
+pytest

@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, or_, and_, case
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.orm import Session
 
 from app.models.request import Request
@@ -25,24 +25,31 @@ def _scope_filter(user: User, scope: str | None):
     if scope == "feed":
         return and_(Request.status == "completed", Request.is_confidential == 0)
 
-    # scope=mine (default) — 排除已撤回的需求
+    # scope=mine (default)
     not_canceled = Request.status != "canceled"
     if user.role == "admin":
         return not_canceled
     if user.role == "sales":
         return and_(Request.sales_id == user.id, not_canceled)
     if user.role == "researcher":
-        return and_(or_(Request.researcher_id == user.id, Request.created_by == user.id), not_canceled)
+        # 研究员: 排除 withdrawn 和 canceled
+        not_withdrawn = Request.status != "withdrawn"
+        return and_(
+            or_(Request.researcher_id == user.id, Request.created_by == user.id),
+            not_canceled,
+            or_(
+                Request.created_by == user.id,  # 自己代提的需求始终可见
+                not_withdrawn,  # 非自己代提的需求排除 withdrawn
+            ),
+        )
     return False
 
 
 def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[list, int]:
     """Build filtered request query with visibility, confidential, and search filters."""
-    # Base query with user name joins via subquery
     sales_user = db.query(User.id, User.display_name).subquery("sales_u")
     researcher_user = db.query(User.id, User.display_name).subquery("researcher_u")
 
-    # Download count subquery
     dl_count = (
         db.query(DownloadLog.request_id, func.count(DownloadLog.id).label("dl_count"))
         .group_by(DownloadLog.request_id)
@@ -127,7 +134,8 @@ def accept_request(db: Session, request_id: int, user: User) -> Request:
 
 def complete_request(
     db: Session, request_id: int, user: User,
-    result_note: str | None = None, work_hours: float | None = None,
+    result_note: str | None = None,
+    work_hours: float | None = None,
     attachment_path: str | None = None,
 ) -> Request:
     req = db.get(Request, request_id)
@@ -149,13 +157,39 @@ def complete_request(
     return req
 
 
-def withdraw_request(db: Session, request_id: int, user: User) -> Request:
+def withdraw_request(db: Session, request_id: int, user: User, reason: str) -> Request:
+    """研究员退回: pending → withdrawn, 保留 researcher_id, 写入 withdraw_reason"""
     req = db.get(Request, request_id)
     if not req:
         raise ValueError("需求不存在")
     if req.status != "pending" or req.researcher_id != user.id:
-        raise ValueError("无法撤回此需求")
-    req.researcher_id = None
+        raise ValueError("无法退回此需求")
+    req.status = "withdrawn"
+    req.withdraw_reason = reason
+    req.updated_at = now_beijing()
+    # 保留 researcher_id 用于审计 (business-rules §3.3)
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+def resubmit_request(db: Session, request_id: int, user: User, updates: dict) -> Request:
+    """销售重新提交: withdrawn → pending, 清空 withdraw_reason"""
+    req = db.get(Request, request_id)
+    if not req:
+        raise ValueError("需求不存在")
+    if req.status != "withdrawn":
+        raise ValueError("仅退回状态可重新提交")
+    if user.role != "admin" and user.id not in (req.sales_id, req.created_by):
+        raise ValueError("无权重新提交此需求")
+    # 更新可编辑字段
+    editable = {"title", "description", "request_type", "research_scope",
+                "org_name", "org_type", "department", "researcher_id"}
+    for k, v in updates.items():
+        if k in editable and v is not None:
+            setattr(req, k, v)
+    req.status = "pending"
+    req.withdraw_reason = None
     req.updated_at = now_beijing()
     db.commit()
     db.refresh(req)
@@ -163,15 +197,14 @@ def withdraw_request(db: Session, request_id: int, user: User) -> Request:
 
 
 def cancel_request(db: Session, request_id: int, user: User) -> Request:
-    """销售撤回需求: pending → canceled (软删除)"""
+    """销售/admin 取消需求: pending/withdrawn → canceled (软删除)"""
     req = db.get(Request, request_id)
     if not req:
         raise ValueError("需求不存在")
-    if req.status != "pending":
-        raise ValueError("需求已在处理中，无法撤回")
-    # 仅允许需求创建者或对应销售撤回
+    if req.status not in ("pending", "withdrawn"):
+        raise ValueError("仅待处理或已退回状态可取消")
     if user.role != "admin" and user.id not in (req.created_by, req.sales_id):
-        raise ValueError("无权撤回此需求")
+        raise ValueError("无权取消此需求")
     req.status = "canceled"
     req.updated_at = now_beijing()
     db.commit()

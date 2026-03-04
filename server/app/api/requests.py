@@ -1,5 +1,4 @@
 import shutil
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status
 
@@ -8,10 +7,11 @@ from app.core.deps import DB, CurrentUser, AdminUser
 from app.models.request import Request
 from app.schemas.request import (
     RequestCreate, RequestUpdate, RequestResponse, RequestListParams,
-    ReassignRequest, ConfidentialRequest,
+    WithdrawRequest, ResubmitRequest, ReassignRequest, ConfidentialRequest,
 )
 from app.services.request_service import (
-    query_requests, accept_request, complete_request, withdraw_request, cancel_request,
+    query_requests, accept_request, complete_request,
+    withdraw_request, resubmit_request, cancel_request,
 )
 from app.utils.datetime_utils import now_beijing
 
@@ -101,13 +101,6 @@ def delete_request(request_id: int, db: DB, admin: AdminUser):
     return {"message": "ok"}
 
 
-# ── 以下三个端点删除了冗余的 role 检查 ──
-# 业务校验由 service 层统一处理:
-#   accept_request  → 检查 status=pending & researcher_id=user.id
-#   complete_request → 检查 status=in_progress & researcher_id=user.id
-#   withdraw_request → 检查 status=pending & researcher_id=user.id
-
-
 @router.post("/{request_id}/accept")
 def accept(request_id: int, db: DB, user: CurrentUser):
     try:
@@ -140,9 +133,20 @@ async def complete(
 
 
 @router.post("/{request_id}/withdraw")
-def withdraw(request_id: int, db: DB, user: CurrentUser):
+def withdraw(request_id: int, body: WithdrawRequest, db: DB, user: CurrentUser):
+    """研究员退回: pending → withdrawn, 必须填写退回原因"""
     try:
-        withdraw_request(db, request_id, user)
+        withdraw_request(db, request_id, user, body.reason)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    return {"message": "ok"}
+
+
+@router.post("/{request_id}/resubmit")
+def resubmit(request_id: int, body: ResubmitRequest, db: DB, user: CurrentUser):
+    """销售重新提交: withdrawn → pending"""
+    try:
+        resubmit_request(db, request_id, user, body.model_dump(exclude_unset=True))
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     return {"message": "ok"}
@@ -150,7 +154,7 @@ def withdraw(request_id: int, db: DB, user: CurrentUser):
 
 @router.post("/{request_id}/cancel")
 def cancel(request_id: int, db: DB, user: CurrentUser):
-    """销售/研究员撤回需求 (软删除): pending → canceled"""
+    """取消需求: pending/withdrawn → canceled"""
     try:
         cancel_request(db, request_id, user)
     except ValueError as e:

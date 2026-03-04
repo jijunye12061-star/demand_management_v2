@@ -47,6 +47,7 @@ class RequestResponse(BaseModel):
     result_note: str | None = None
     attachment_path: str | None = None
     work_hours: float = 0
+    withdraw_reason: str | None = None
     created_by: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
@@ -74,9 +75,19 @@ class RequestListParams(BaseModel):
     page_size: int = 20
 
 
-class CompleteRequest(BaseModel):
-    result_note: str | None = None
-    work_hours: float | None = None
+class WithdrawRequest(BaseModel):
+    reason: str
+
+
+class ResubmitRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    request_type: str | None = None
+    research_scope: str | None = None
+    org_name: str | None = None
+    org_type: str | None = None
+    department: str | None = None
+    researcher_id: int | None = None
 
 
 class ReassignRequest(BaseModel):

@@ -20,12 +20,16 @@ def list_users(db: DB, admin: AdminUser, role: str | None = None):
 
 @router.get("/researchers", response_model=list[UserResponse])
 def list_researchers(db: DB, user: CurrentUser):
-    return db.execute(select(User).where(User.role == "researcher").order_by(User.display_name)).scalars().all()
+    return db.execute(
+        select(User).where(User.role.in_(["researcher", "admin"])).order_by(User.display_name)
+    ).scalars().all()
 
 
 @router.get("/sales", response_model=list[UserResponse])
 def list_sales(db: DB, user: CurrentUser):
-    return db.execute(select(User).where(User.role == "sales").order_by(User.display_name)).scalars().all()
+    return db.execute(
+        select(User).where(User.role.in_(["sales", "admin"])).order_by(User.display_name)
+    ).scalars().all()
 
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -34,12 +38,8 @@ def create_user(body: UserCreate, db: DB, admin: AdminUser):
     if exists:
         raise HTTPException(status.HTTP_409_CONFLICT, "用户名已存在")
     user = User(
-        username=body.username,
-        password=hash_password(body.password),
-        password_version=2,
-        role=body.role,
-        display_name=body.display_name,
-        team_id=body.team_id,
+        username=body.username, password=hash_password(body.password), password_version=2,
+        role=body.role, display_name=body.display_name, team_id=body.team_id,
         created_at=now_beijing(),
     )
     db.add(user)
