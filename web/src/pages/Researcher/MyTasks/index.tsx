@@ -18,7 +18,7 @@ import {
 } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
-import { getRequests, acceptRequest, completeRequest, cancelRequest } from '@/services/api';
+import { getRequests, acceptRequest, completeRequest, withdrawRequest } from '@/services/api';
 import type { RequestItem } from '@/services/typings';
 import { STATUS_ENUM, REQUEST_TYPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
@@ -32,9 +32,16 @@ const MyTasks: React.FC = () => {
   const pendingRef = useRef<ActionType>(null);
   const progressRef = useRef<ActionType>(null);
   const completedRef = useRef<ActionType>(null);
+  const submittedRef = useRef<ActionType>(null);
 
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<RequestItem | null>(null);
+
+  // 退回 Modal
+  const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
+  const [withdrawingId, setWithdrawingId] = useState<number>();
+  const [withdrawForm] = Form.useForm();
+  const [withdrawing, setWithdrawing] = useState(false);
 
   // 完成任务 Modal
   const [completeModalVisible, setCompleteModalVisible] = useState(false);
@@ -48,6 +55,7 @@ const MyTasks: React.FC = () => {
     setDrawerVisible(true);
   };
 
+  // ── 接受任务 ──
   const handleAccept = async (id: number) => {
     try {
       await acceptRequest(id);
@@ -59,16 +67,30 @@ const MyTasks: React.FC = () => {
     }
   };
 
-  const handleCancel = async (id: number) => {
+  // ── 退回操作 (弹窗填原因) ──
+  const openWithdrawModal = (id: number) => {
+    setWithdrawingId(id);
+    setWithdrawModalVisible(true);
+    withdrawForm.resetFields();
+  };
+
+  const handleWithdraw = async () => {
     try {
-      await cancelRequest(id);
-      message.success('需求已撤回');
+      const values = await withdrawForm.validateFields();
+      setWithdrawing(true);
+      await withdrawRequest(withdrawingId!, values.reason);
+      message.success('已退回需求');
+      setWithdrawModalVisible(false);
       pendingRef.current?.reload();
     } catch (err: any) {
-      message.error(err?.message || '撤回失败');
+      if (err?.errorFields) return;
+      message.error(err?.message || '退回失败');
+    } finally {
+      setWithdrawing(false);
     }
   };
 
+  // ── 完成任务 ──
   const openCompleteModal = (id: number) => {
     setCompletingId(id);
     setCompleteModalVisible(true);
@@ -80,13 +102,11 @@ const MyTasks: React.FC = () => {
     try {
       const values = await completeForm.validateFields();
       setSubmitting(true);
-
       await completeRequest(completingId!, {
         result_note: values.result_note,
         work_hours: values.work_hours,
         attachment: fileList[0]?.originFileObj,
       });
-
       message.success('任务已完成');
       setCompleteModalVisible(false);
       progressRef.current?.reload();
@@ -99,15 +119,13 @@ const MyTasks: React.FC = () => {
     }
   };
 
-  // --- 共享列定义 ---
+  // ── 共享列定义 ──
   const baseColumns: ProColumns<RequestItem>[] = [
     {
       title: '需求标题',
       dataIndex: 'title',
       ellipsis: true,
-      render: (dom, entity) => (
-        <a onClick={() => openDetail(entity)}>{dom}</a>
-      ),
+      render: (dom, entity) => <a onClick={() => openDetail(entity)}>{dom}</a>,
     },
     {
       title: '关键字搜索',
@@ -115,11 +133,7 @@ const MyTasks: React.FC = () => {
       hideInTable: true,
       fieldProps: { placeholder: '支持标题/描述模糊搜索' },
     },
-    {
-      title: '机构名称',
-      dataIndex: 'org_name',
-      hideInSearch: true,
-    },
+    { title: '机构名称', dataIndex: 'org_name', hideInSearch: true },
     {
       title: '需求类型',
       dataIndex: 'request_type',
@@ -127,11 +141,7 @@ const MyTasks: React.FC = () => {
       hideInSearch: true,
       fieldProps: { options: REQUEST_TYPE_OPTIONS },
     },
-    {
-      title: '销售',
-      dataIndex: 'sales_name',
-      hideInSearch: true,
-    },
+    { title: '销售', dataIndex: 'sales_name', hideInSearch: true },
     {
       title: '状态',
       dataIndex: 'status',
@@ -141,14 +151,10 @@ const MyTasks: React.FC = () => {
         return <Tag color={cfg?.status?.toLowerCase()}>{cfg?.text || entity.status}</Tag>;
       },
     },
-    {
-      title: '创建时间',
-      dataIndex: 'created_at',
-      valueType: 'dateTime',
-      hideInSearch: true,
-    },
+    { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', hideInSearch: true },
   ];
 
+  // ── 待处理: 接受 + 退回 ──
   const pendingColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
     {
@@ -164,18 +170,18 @@ const MyTasks: React.FC = () => {
         >
           <a>接受</a>
         </Popconfirm>,
-        <Popconfirm
-          key="cancel"
-          title="确定撤回这个需求？"
-          description="撤回后该需求将被取消"
-          onConfirm={() => handleCancel(entity.id)}
+        <a
+          key="withdraw"
+          style={{ color: '#faad14' }}
+          onClick={() => openWithdrawModal(entity.id)}
         >
-          <a style={{ color: '#ff4d4f' }}>撤回</a>
-        </Popconfirm>,
+          退回
+        </a>,
       ],
     },
   ];
 
+  // ── 处理中: 完成 ──
   const progressColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
     {
@@ -184,27 +190,16 @@ const MyTasks: React.FC = () => {
       key: 'option',
       width: 100,
       render: (_, entity) => [
-        <a key="complete" onClick={() => openCompleteModal(entity.id)}>
-          完成
-        </a>,
+        <a key="complete" onClick={() => openCompleteModal(entity.id)}>完成</a>,
       ],
     },
   ];
 
+  // ── 已完成: 只读 + 下载 ──
   const completedColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
-    {
-      title: '工时(h)',
-      dataIndex: 'work_hours',
-      hideInSearch: true,
-      width: 80,
-    },
-    {
-      title: '完成时间',
-      dataIndex: 'completed_at',
-      valueType: 'dateTime',
-      hideInSearch: true,
-    },
+    { title: '工时(h)', dataIndex: 'work_hours', hideInSearch: true, width: 80 },
+    { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', hideInSearch: true },
     {
       title: '操作',
       valueType: 'option',
@@ -220,6 +215,21 @@ const MyTasks: React.FC = () => {
             size="small"
           />
         ),
+      ],
+    },
+  ];
+
+  // ── 我提交的: 只读列表 (全状态可见, 含 status 列) ──
+  const submittedColumns: ProColumns<RequestItem>[] = [
+    ...baseColumns,
+    { title: '研究员', dataIndex: 'researcher_name', hideInSearch: true },
+    {
+      title: '操作',
+      valueType: 'option',
+      key: 'option',
+      width: 100,
+      render: (_, entity) => [
+        <a key="detail" onClick={() => openDetail(entity)}>详情</a>,
       ],
     },
   ];
@@ -270,6 +280,21 @@ const MyTasks: React.FC = () => {
         />
       ),
     },
+    {
+      key: 'submitted',
+      label: '我提交的',
+      children: (
+        <ProTable<RequestItem>
+          actionRef={submittedRef}
+          rowKey="id"
+          search={{ labelWidth: 80 }}
+          request={async (params) =>
+            getRequests({ ...params, scope: 'mine' })
+          }
+          columns={submittedColumns}
+        />
+      ),
+    },
   ];
 
   return (
@@ -283,6 +308,28 @@ const MyTasks: React.FC = () => {
         downloadMode="mine"
       />
 
+      {/* 退回原因 Modal */}
+      <Modal
+        title="退回需求"
+        open={withdrawModalVisible}
+        onCancel={() => setWithdrawModalVisible(false)}
+        onOk={handleWithdraw}
+        confirmLoading={withdrawing}
+        okText="确认退回"
+        destroyOnClose
+      >
+        <Form form={withdrawForm} layout="vertical">
+          <Form.Item
+            name="reason"
+            label="退回原因"
+            rules={[{ required: true, message: '请填写退回原因' }]}
+          >
+            <Input.TextArea rows={4} placeholder="请说明退回原因，销售将看到此信息" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 完成任务 Modal */}
       <Modal
         title="完成任务"
         open={completeModalVisible}
@@ -301,13 +348,7 @@ const MyTasks: React.FC = () => {
             label="工时（小时）"
             rules={[{ required: true, message: '请填写工时' }]}
           >
-            <InputNumber
-              min={0}
-              step={0.5}
-              precision={1}
-              style={{ width: '100%' }}
-              placeholder="如 2.5"
-            />
+            <InputNumber min={0} step={0.5} precision={1} style={{ width: '100%' }} placeholder="如 2.5" />
           </Form.Item>
           <Form.Item label="上传附件">
             <Upload
