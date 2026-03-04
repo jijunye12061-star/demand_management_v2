@@ -51,7 +51,7 @@ CREATE TABLE requests (
     sales_id        INTEGER NOT NULL REFERENCES users(id),
     researcher_id   INTEGER REFERENCES users(id),
     is_confidential INTEGER DEFAULT 0,
-    status          TEXT    DEFAULT 'pending',   -- pending | in_progress | completed
+    status          TEXT    DEFAULT 'pending',   -- pending | in_progress | completed | withdrawn | canceled
     result_note     TEXT,
     attachment_path TEXT,
     work_hours      REAL    DEFAULT 0,
@@ -102,7 +102,7 @@ CREATE TABLE download_logs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id    INTEGER NOT NULL REFERENCES requests(id),
     user_id       INTEGER NOT NULL REFERENCES users(id),
-    org_name      TEXT,
+    org_name      TEXT,                           -- 销售选择的机构 (非需求关联机构), 研究员/admin 为 null
     downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_dl_request ON download_logs(request_id);
@@ -122,6 +122,15 @@ ALTER TABLE users ADD COLUMN password_version INTEGER DEFAULT 1;
 ```
 
 **迁移策略**: 用户登录时, 若 `password_version=1`, 验证 SHA256 通过后自动升级为 bcrypt 并写回, 更新 `password_version=2`。
+
+### 3.2 requests 表追加
+
+```sql
+-- 研究员退回原因
+ALTER TABLE requests ADD COLUMN withdraw_reason TEXT;
+```
+
+**用途**: 研究员执行退回操作时必须填写原因, 销售在「我的需求」中查看退回详情。重新提交后清空。
 
 ---
 
@@ -161,5 +170,8 @@ DEPARTMENT_MAP = {
 }
 
 # 需求状态
-STATUSES = ["pending", "in_progress", "completed"]
+STATUSES = ["pending", "in_progress", "completed", "withdrawn", "canceled"]
+
+# 附件存储根目录
+UPLOAD_DIR = "data/uploads"  # 实际路径: uploads/{request_id}/filename
 ```

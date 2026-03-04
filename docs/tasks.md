@@ -25,7 +25,7 @@
 ### P0-3 SQLAlchemy 模型映射
 - 按 database.md 创建 5 个模型文件, 精确映射现有表结构
 - `models/user.py`: User
-- `models/request.py`: Request
+- `models/request.py`: Request (含新增 withdraw_reason 字段)
 - `models/team.py`: Team, TeamOrgMapping
 - `models/organization.py`: Organization
 - `models/download_log.py`: DownloadLog
@@ -39,6 +39,12 @@
 - 配置代理: `config/proxy.ts` → `/api` 转发 `localhost:8000`
 - 配置中文: `config/config.ts` locale 设为 zh-CN
 - 验证: `npm run dev` 启动成功, 看到默认布局
+- ⏱️ 0.5h
+
+### P0-5 数据库迁移脚本
+- `scripts/migrate_v3.py`: 新增 withdraw_reason 字段 + password_version 字段
+- 幂等执行 (检查列是否存在再 ALTER)
+- 验证: 对现有 data.db 执行迁移成功
 - ⏱️ 0.5h
 
 ---
@@ -73,85 +79,85 @@
 - `pages/Login/index.tsx`: ProForm 登录表单
 - `services/auth.ts`: login(), refresh(), changePassword()
 - Token 存储: localStorage
-- 请求拦截器: 自动注入 Authorization header, 401 时跳转登录
-- `app.tsx`: `getInitialState()` 获取当前用户信息
-- 验证: 登录后跳转到对应角色首页
+- 请求拦截器: Authorization header 注入, 401 跳转登录
+- `app.tsx`: getInitialState() 获取用户信息
 - ⏱️ 2h
 
 ### P1-5 前端权限路由
-- `access.ts`: 根据 user.role 控制菜单可见性
-- `config/routes.ts`: 完整路由配置 (参照 pages.md)
-- 侧边栏菜单: 根据角色只显示对应端
-- 验证: sales 登录只能看到销售端菜单
+- `access.ts`: 三角色权限控制
+- 完整路由配置 (参照 pages.md §1)
+- 占位页面: 13 个页面的空壳
+- 验证: 不同角色登录看到不同菜单
 - ⏱️ 1h
 
 ---
 
-## Phase 2: 基础数据 API (admin 端依赖)
+## Phase 2: 核心 CRUD API
 
-### P2-1 用户 API
+### P2-1 用户管理 API
 - `app/api/users.py`:
   - `GET /users` (admin)
-  - `GET /users/researchers` (全角色, 下拉用)
-  - `GET /users/sales` (全角色, 下拉用)
-  - `POST /users` (admin)
-  - `PUT /users/:id` (admin)
-  - `DELETE /users/:id` (admin)
+  - `GET /users/researchers` → 返回 role IN ('researcher', 'admin')
+  - `GET /users/sales` → 返回 role IN ('sales', 'admin')
+  - `POST /users`, `PUT /users/:id`, `DELETE /users/:id` (admin)
   - `PUT /users/:id/reset-password` (admin)
-- `app/schemas/user.py`: UserCreate, UserUpdate, UserResponse
+- ⏱️ 1.5h
+
+### P2-2 机构/团队 API
+- `app/api/organizations.py`:
+  - `GET /organizations` (admin), `GET /organizations/by-team` (all)
+  - admin 被选为销售时 by-team 返回全部
+  - CRUD (admin)
+- `app/api/teams.py`:
+  - `GET /teams`, `POST /teams`, `DELETE /teams/:id`
+  - `GET /teams/:id/organizations`, `PUT /teams/:id/organizations`
+  - `PUT /teams/:id/members`
 - ⏱️ 2h
 
-### P2-2 机构 API
-- `app/api/organizations.py`:
-  - `GET /organizations` (admin, 可选 team_id 过滤)
-  - `GET /organizations/by-team` (根据当前用户 team_id)
-  - `POST /organizations` (admin)
-  - `PUT /organizations/:id` (admin)
-  - `DELETE /organizations/:id` (admin)
-- `app/schemas/organization.py`
-- ⏱️ 1h
+### P2-3 需求管理 API
+- `app/api/requests.py`:
+  - `GET /requests` (含 scope=mine/feed + 角色可见性过滤 + 保密过滤)
+  - `GET /requests/:id`
+  - `POST /requests`
+  - `PUT /requests/:id` (admin 全字段 + sales 限定字段/状态)
+  - `DELETE /requests/:id` (admin)
+- `app/services/request_service.py`:
+  - scope=feed 时字段过滤 (org_name, department, work_hours, sales_name, is_confidential 置 null)
+  - scope=mine 时: researcher 排除 withdrawn/canceled
+- ⏱️ 3h
 
-### P2-3 团队 API
-- `app/api/teams.py`:
-  - `GET /teams` (admin)
-  - `POST /teams` (admin)
-  - `DELETE /teams/:id` (admin)
-  - `GET /teams/:id/organizations`
-  - `PUT /teams/:id/organizations` (批量设置)
-  - `PUT /teams/:id/members` (批量设置)
-- `app/schemas/team.py`
-- ⏱️ 1.5h
+### P2-4 需求操作 API
+- `POST /requests/:id/accept` — 研究员接受
+- `POST /requests/:id/complete` — 研究员完成 (multipart)
+- `POST /requests/:id/withdraw` — 研究员退回, body: `{ "reason": "str" }`
+  - 动作: status → withdrawn, 写入 withdraw_reason, 保留 researcher_id
+- `POST /requests/:id/resubmit` — 销售重新提交, body: 可编辑字段 + researcher_id
+  - 动作: 更新字段, status → pending, withdraw_reason → null
+- `POST /requests/:id/cancel` — 销售取消, pending/withdrawn → canceled
+- `PUT /requests/:id/reassign` (admin)
+- `PUT /requests/:id/confidential` (admin)
+- ⏱️ 2h
 
 ---
 
-## Phase 3: 需求核心 API
+## Phase 3: 文件与导出 API
 
-### P3-1 需求 CRUD
-- `app/api/requests.py`:
-  - `GET /requests` — 列表查询 (含分页/筛选/保密过滤/scope)
-  - `GET /requests/:id` — 详情
-  - `POST /requests` — 创建
-  - `PUT /requests/:id` — 编辑 (admin)
-  - `DELETE /requests/:id` — 删除 (admin)
-- `app/schemas/request.py`: RequestCreate, RequestUpdate, RequestResponse, RequestListParams
-- `app/services/request_service.py`: 从现有 services 平移, 改为 SQLAlchemy 查询
-- **重点**: 保密过滤逻辑、scope 参数处理 (mine/feed)
-- ⏱️ 3h
-
-### P3-2 需求操作 API
-- `POST /requests/:id/accept` — 研究员接受
-- `POST /requests/:id/complete` — 研究员完成 (含文件上传)
-- `POST /requests/:id/withdraw` — 研究员撤回
-- `PUT /requests/:id/reassign` — 管理员重新分配
-- `PUT /requests/:id/confidential` — 切换保密
-- ⏱️ 2h
-
-### P3-3 文件上传下载 API
+### P3-1 文件上传/下载
 - `app/api/files.py`:
-  - `POST /files/upload` — 上传 (multipart)
-  - `GET /files/download/:request_id` — 下载 (streaming + 记录日志)
-- 保持与现有 `data/uploads/` 目录结构兼容
+  - `GET /files/download/:request_id` — 下载 + 写日志
+    - 参数 `org_name` (销售必传, 研究员/admin 不传, 记录为 null)
+  - `POST /files/upload` (备用)
+- 文件存储路径: `uploads/{request_id}/filename`
 - 下载时自动调 download_service 写日志
+- ⏱️ 1.5h
+
+### P3-2 导出 API
+- `app/api/exports.py`:
+  - `GET /exports/requests` → StreamingResponse (Excel)
+    - admin: 全字段导出
+    - sales/researcher: 仅 feed 公开数据 + 展示字段
+  - `GET /exports/requests/preview` (admin only)
+- `app/utils/export.py`: openpyxl 生成 Excel
 - ⏱️ 1.5h
 
 ---
@@ -160,33 +166,36 @@
 
 ### P4-1 提交需求页
 - `pages/Sales/SubmitRequest/index.tsx`
-- ProForm: 字段配置参照 pages.md 2.2
+- ProForm: 字段配置参照 pages.md §2.2
 - 机构下拉: 调 `/organizations/by-team` 动态获取
 - 部门级联: org_type 变化时联动 department 选项
-- 研究员下拉: 调 `/users/researchers`
+- 研究员下拉: 调 `/users/researchers` (含 admin)
 - 提交: 调 `POST /requests`
 - ⏱️ 2h
 
 ### P4-2 我的需求页
 - `pages/Sales/MyRequests/index.tsx`
-- 统计卡片: 调 `/requests?scope=mine` 然后前端聚合, 或新增统计接口
+- 统计卡片: 总数/待处理/处理中/已完成/已退回
 - ProTable: 调 `/requests?scope=mine` + 筛选参数
-- RequestDetailDrawer 组件: 点击行展开详情
-- FileDownloadButton 组件: 下载 + 日志上报
-- ⏱️ 2.5h
+- 5 种状态的 Tag 颜色展示
+- 操作按钮: 查看详情、编辑 (pending/withdrawn)、重新提交 (withdrawn)、取消 (pending/withdrawn)、下载 (completed)
+- withdrawn 状态详情展示退回原因
+- ⏱️ 3h
 
 ### P4-3 需求动态页
 - `pages/Sales/RequestFeed/index.tsx`
 - ProTable: 调 `/requests?scope=feed` + 多维筛选
-- 导出按钮: 调 `/exports/requests`
-- ⏱️ 1.5h
+- 表格列: 隐藏 org_name, department, work_hours, sales_name
+- 下载按钮: 弹窗选机构后下载
+- 导出 Excel 按钮 (调 `/exports/requests`, 仅展示字段)
+- ⏱️ 2h
 
 ### P4-4 通用组件抽取
-- `components/RequestDetailDrawer/index.tsx`
-- `components/StatsCards/index.tsx`
-- `components/FileDownloadButton/index.tsx`
-- 这些组件在研究端/管理端复用
-- ⏱️ 1.5h
+- `components/RequestDetailDrawer/index.tsx` — 需求详情抽屉, mode 参数控制字段展示
+- `components/StatsCards/index.tsx` — 统计卡片行
+- `components/FileDownloadButton/index.tsx` — 下载按钮 (含日志上报)
+- `components/OrgSelectModal/index.tsx` — 销售下载时选机构弹窗
+- ⏱️ 2h
 
 ---
 
@@ -194,17 +203,19 @@
 
 ### P5-1 研究员提交需求
 - `pages/Researcher/SubmitRequest/index.tsx`
-- 复用销售提交表单, 额外加 sales_id 下拉
-- 机构列表: 根据所选销售的 team_id 动态获取 → 需一个 `/organizations?team_id=X` 接口
+- 复用销售提交表单, 额外加 sales_id 下拉 (含 admin)
+- 机构列表: 根据所选销售的 team_id 动态获取; admin 被选时显示全部
 - ⏱️ 1.5h
 
 ### P5-2 我的任务页
 - `pages/Researcher/MyTasks/index.tsx`
 - Tabs 组件 (4 个 Tab):
-  - 待处理: 列表 + 接受/撤回按钮
+  - 待处理: 列表 + 接受/退回按钮
+  - 退回操作: Modal 弹窗填写退回原因 (TextArea 必填)
   - 处理中: 列表 + 完成操作 (Modal: 上传附件 + 填说明 + 工时)
   - 已完成: 只读列表
-  - 我提交的: 只读列表 (created_by = me)
+  - 我提交的: 只读列表
+- withdrawn 需求不显示在任何 Tab
 - ⏱️ 3h
 
 ### P5-3 需求动态 (复用)
@@ -219,7 +230,6 @@
 - `app/api/stats.py`:
   - `GET /stats/overview` — 卡片数据
   - `GET /stats/researcher-ranking` — 排行
-- `app/services/stats_service.py`: 从现有 stats_service 平移核心 SQL
 - ⏱️ 2h
 
 ### P6-2 多维矩阵 API
@@ -228,20 +238,11 @@
 - `GET /stats/org-matrix`
 - `GET /stats/sales-matrix`
 - `GET /stats/charts` (饼图+柱状图数据)
-- 复用现有多时间维度 SQL, 返回 JSON 格式
 - ⏱️ 2h
 
 ### P6-3 下载统计 API
 - `GET /stats/downloads`
-- `app/services/download_service.py`: 从现有 download_service 平移
 - ⏱️ 1h
-
-### P6-4 导出 API
-- `app/api/exports.py`:
-  - `GET /exports/requests` → StreamingResponse (Excel)
-  - `GET /exports/requests/preview` → JSON
-- `app/utils/export.py`: 用 openpyxl 生成 Excel
-- ⏱️ 1.5h
 
 ---
 
@@ -249,119 +250,84 @@
 
 ### P7-1 工作量看板
 - `pages/Admin/Dashboard/index.tsx`
-- PeriodSelector 组件 (时间周期切换)
-- StatsCards (5 个指标)
-- 研究员排行 ProTable (可展开明细)
-- ⏱️ 2h
+- PeriodSelector + StatisticCard × 5 + 研究员排行表格
+- ⏱️ 2.5h
 
 ### P7-2 多维分析 — 统计看板 Tab
-- `pages/Admin/Analytics/index.tsx`
-- Tab1: 饼图 ×2 + 柱状图 ×1 (用 @ant-design/charts)
-- ⏱️ 1.5h
+- `pages/Admin/Analytics/index.tsx` (Tab 1)
+- 饼图 × 2 + 柱状图 × 1 (用 @ant-design/charts)
+- ⏱️ 2h
 
-### P7-3 多维分析 — 矩阵表格 Tabs
-- Tab2-5: MultiDimensionTable 组件 (行=维度, 列=时间)
-- 自动过滤全 0 行, 底部固定总计行
-- 4 个 Tab 复用同一组件, 传不同 API 和维度名
+### P7-3 多维分析 — 矩阵 Tabs
+- Tab 2~5: 研究员/需求类型/客户/销售 矩阵表格
+- MultiDimensionTable 组件复用
 - ⏱️ 2h
 
 ### P7-4 多维分析 — 下载统计 Tab
-- Tab6: Top10 排行表 + 近期记录表
+- Tab 6: Top 10 + 近期记录
 - ⏱️ 1h
 
 ### P7-5 数据导出页
 - `pages/Admin/Export/index.tsx`
-- ProForm 筛选区 + ProTable 预览 + 导出按钮
+- 筛选 + 预览 + 全字段 Excel 导出
 - ⏱️ 1.5h
 
-### P7-6 系统管理 — 用户管理
+### P7-6 用户管理
 - `pages/Admin/Settings/Users/index.tsx`
-- ProTable + Modal CRUD
-- 角色 Tag 颜色区分
-- 密码重置 Popconfirm
-- ⏱️ 2h
+- ProTable + CRUD Modal
+- ⏱️ 1.5h
 
-### P7-7 系统管理 — 需求管理
+### P7-7 需求管理
 - `pages/Admin/Settings/Requests/index.tsx`
-- ProTable (全字段筛选) + Drawer 编辑表单
-- 重新分配/切换保密/删除操作
+- ProTable + 编辑 Drawer + 重新分配 + 切换保密 + 删除
 - ⏱️ 2h
 
-### P7-8 系统管理 — 机构管理
+### P7-8 机构管理
 - `pages/Admin/Settings/Orgs/index.tsx`
-- ProTable + Modal CRUD
+- ProTable + CRUD Modal
 - ⏱️ 1h
 
-### P7-9 系统管理 — 团队配置
+### P7-9 团队配置
 - `pages/Admin/Settings/Teams/index.tsx`
-- ProTable + Modal CRUD
-- 机构分配: Transfer 组件 (左右穿梭)
-- 成员分配: Transfer 组件
+- ProTable + Transfer 穿梭框 (机构+成员)
 - ⏱️ 2h
 
 ---
 
-## Phase 8: 联调与收尾
+## Phase 8: 联调收尾
 
-### P8-1 密码迁移脚本
-- `scripts/migrate_passwords.py`
-- 批量将 password_version=1 的用户标记 (实际迁移在首次登录时完成)
-- ALTER TABLE 添加 password_version 字段
-- ⏱️ 0.5h
+### P8-1 前后端联调
+- 全流程走通: 提交 → 接受 → 完成 → 动态可见
+- 退回流程: 退回 → 销售看到退回原因 → 修改重提/取消
+- 保密需求可见性验证
+- 下载日志验证 (销售选机构)
+- ⏱️ 2h
 
-### P8-2 性能索引
-- 执行 database.md 中的建议索引 SQL
-- ⏱️ 0.5h
+### P8-2 样式打磨
+- 状态 Tag 颜色统一
+- 移动端基本适配
+- 空状态/Loading 状态
+- ⏱️ 1.5h
 
-### P8-3 Nginx 部署配置
-- 前端 build → Nginx 托管
-- `/api/*` 反向代理到 Uvicorn
-- 编写 `deploy/nginx.conf`
-- 编写 `deploy/nssm-setup.bat` (后端 Windows 服务)
+### P8-3 部署脚本
+- Nginx 配置 (静态资源 + API 反向代理)
+- Uvicorn + NSSM (Windows Server)
+- 数据库备份定时任务
 - ⏱️ 1h
 
-### P8-4 全量功能走查
-- 按 proposal.md 功能矩阵逐项验证
-- 三角色登录流程测试
-- 保密需求可见性测试
-- 文件上传下载完整链路
-- 统计数据准确性比对 (与现有系统)
-- ⏱️ 2h
-
 ---
 
-## 任务依赖图
+## 总计工时估算
 
-```
-P0 (初始化)
-  ├→ P1 (认证)
-  │    └→ P4 (销售前端)
-  │    └→ P5 (研究前端)
-  │    └→ P7 (管理前端)
-  ├→ P2 (基础数据 API)
-  │    └→ P4, P5, P7
-  └→ P3 (需求 API)
-       └→ P4, P5
-       └→ P6 (统计 API)
-            └→ P7
-                 └→ P8 (联调收尾)
-```
-
----
-
-## 工期汇总
-
-| 阶段 | 任务数 | 预估工时 |
-|------|--------|---------|
-| P0 初始化 | 4 | 2.5h |
-| P1 认证 | 5 | 6h |
-| P2 基础数据 | 3 | 4.5h |
-| P3 需求核心 | 3 | 6.5h |
-| P4 销售前端 | 4 | 7.5h |
-| P5 研究前端 | 3 | 5h |
-| P6 统计 API | 4 | 6.5h |
-| P7 管理前端 | 9 | 15h |
-| P8 联调收尾 | 4 | 4h |
-| **合计** | **39 个原子任务** | **~58h ≈ 7-8 个工作日** |
-
-> 以上为纯编码时间, 实际含调试/沟通/需求确认, 建议预留 2x 缓冲 → **3-4 周**
+| 阶段 | 工时 |
+|------|------|
+| Phase 0: 初始化 | 2.5h |
+| Phase 1: 认证 | 6h |
+| Phase 2: 核心 CRUD | 8.5h |
+| Phase 3: 文件与导出 | 3h |
+| Phase 4: 销售端前端 | 9h |
+| Phase 5: 研究端前端 | 5h |
+| Phase 6: 统计 API | 5h |
+| Phase 7: 管理端前端 | 15.5h |
+| Phase 8: 收尾 | 4.5h |
+| **合计** | **~59h** |

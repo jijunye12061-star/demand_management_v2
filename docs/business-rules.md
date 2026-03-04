@@ -11,19 +11,23 @@
 | requests | 列表 (mine) | ✅ | ✅ | ✅ |
 | requests | 列表 (feed) | ✅ | ✅ | ✅ |
 | requests | 创建 | ✅ | ✅ (代提) | ✅ |
-| requests | 编辑 | ❌ | ❌ | ✅ |
+| requests | 编辑 (自己的, pending/withdrawn) | ✅ | ❌ | — |
+| requests | 编辑 (任意) | ❌ | ❌ | ✅ |
 | requests | 删除 | ❌ | ❌ | ✅ |
 | requests | 接受 | ❌ | ✅ (自己的) | ❌ |
 | requests | 完成 | ❌ | ✅ (自己的) | ❌ |
-| requests | 撤回 | ❌ | ✅ (自己的, pending) | ❌ |
+| requests | 退回 (withdraw) | ❌ | ✅ (自己的, pending) | ❌ |
+| requests | 重新提交 (resubmit) | ✅ (自己的, withdrawn) | ❌ | ❌ |
+| requests | 取消 (cancel) | ✅ (自己的, pending/withdrawn) | ❌ | ❌ |
 | requests | 重新分配 | ❌ | ❌ | ✅ |
-| files | 下载 | ✅ (有权限) | ✅ (有权限) | ✅ |
+| files | 下载 | ✅ (有权限, 需选机构) | ✅ (有权限) | ✅ |
+| exports | feed 导出 | ✅ (仅展示字段) | ✅ (仅展示字段) | ✅ (仅展示字段) |
+| exports | 全量导出 | ❌ | ❌ | ✅ |
 | users | CRUD | ❌ | ❌ | ✅ |
 | teams | CRUD | ❌ | ❌ | ✅ |
 | organizations | CRUD | ❌ | ❌ | ✅ |
 | organizations | 按团队查询 | ✅ | ✅ | ✅ |
 | stats | 所有 | ❌ | ❌ | ✅ |
-| exports | 所有 | ❌ | ❌ | ✅ |
 
 ### 1.2 前端路由权限
 
@@ -36,6 +40,14 @@ export default {
 }
 ```
 
+### 1.3 Admin 兼容规则
+
+admin 同时具备研究员和销售身份:
+- `GET /users/researchers` → 返回 `role IN ('researcher', 'admin')`
+- `GET /users/sales` → 返回 `role IN ('sales', 'admin')`
+- admin 被选为销售时, 机构列表显示全部 (不受团队限制)
+- admin 被指派为研究员时, 正常接受/完成/退回任务 (通过管理端需求管理页操作)
+
 ---
 
 ## 2. 需求可见性规则
@@ -44,15 +56,21 @@ export default {
 
 | 角色 | 可见范围 |
 |------|---------|
-| sales | `sales_id = 当前用户` 的所有需求 |
-| researcher | `researcher_id = 当前用户` 的需求 + `created_by = 当前用户` 的需求 |
+| sales | `sales_id = 当前用户` 的所有需求 (排除 canceled) |
+| researcher | `researcher_id = 当前用户` 的需求 (排除 withdrawn 和 canceled) + `created_by = 当前用户` 的需求 |
 | admin | 所有需求 |
+
+> **研究员退回后**: withdrawn 状态的需求不再出现在研究员的任务列表中, 但 `researcher_id` 保留用于审计。
 
 ### 2.2 "需求动态" 模式 (scope=feed)
 
 **基础条件**: `status = 'completed'` AND `is_confidential = 0`
 
 所有角色看到的内容一致 — 已完成的公开需求。
+
+**字段过滤** (后端强制, scope=feed 时):
+- ✅ 返回: id, title, description, request_type, research_scope, org_type, researcher_id, researcher_name, completed_at, attachment_path, download_count
+- ❌ 置 null: org_name, department, work_hours, sales_id, sales_name, is_confidential
 
 ### 2.3 保密需求过滤
 
@@ -69,11 +87,14 @@ export default {
 ## 3. 状态流转规则
 
 ```
-pending ──→ in_progress   (研究员 accept)
-pending ──→ pending       (研究员 withdraw: 清空 researcher_id)
-in_progress → completed   (研究员 complete)
-任何状态 ──→ 任何状态      (admin 编辑: 可直接改状态)
-任何状态 ──→ 重新分配      (admin reassign: 可改 researcher_id)
+pending ──→ in_progress      (研究员 accept)
+pending ──→ withdrawn        (研究员 withdraw: 填退回原因)
+withdrawn ──→ pending        (销售 resubmit: 修改后重新提交)
+withdrawn ──→ canceled       (销售 cancel: 放弃需求)
+pending ──→ canceled         (销售 cancel: 撤回未处理需求)
+in_progress → completed      (研究员 complete)
+任何状态 ──→ 任何状态         (admin 编辑: 可直接改状态)
+任何状态 ──→ 重新分配         (admin reassign: 可改 researcher_id)
 ```
 
 ### 3.1 接受任务 (accept)
@@ -86,10 +107,31 @@ in_progress → completed   (研究员 complete)
 - 前置: `status = 'in_progress'` AND `researcher_id = current_user.id`
 - 动作: `status → 'completed'`, `completed_at = now()`, 保存附件/说明/工时
 
-### 3.3 撤回 (withdraw)
+### 3.3 退回 (withdraw)
 
 - 前置: `status = 'pending'` AND `researcher_id = current_user.id`
-- 动作: `researcher_id → NULL`, 状态保持 `pending`
+- 必填: `withdraw_reason` (退回原因)
+- 动作: `status → 'withdrawn'`, `withdraw_reason = reason`, `updated_at = now()`
+- 注意: **保留 researcher_id** (记录谁退回的), 不清空
+
+### 3.4 重新提交 (resubmit)
+
+- 前置: `status = 'withdrawn'` AND (`sales_id = current_user.id` OR `created_by = current_user.id`)
+- 可编辑字段: title, description, request_type, research_scope, org_name, org_type, department, researcher_id
+- 动作: `status → 'pending'`, `withdraw_reason → NULL`, `updated_at = now()`, 更新各编辑字段
+
+### 3.5 取消需求 (cancel)
+
+- 前置: `status IN ('pending', 'withdrawn')` AND (`sales_id = current_user.id` OR `created_by = current_user.id` OR `role = 'admin'`)
+- 动作: `status → 'canceled'`, `updated_at = now()`
+- canceled 需求从默认列表查询中过滤, 但保留用于审计
+
+### 3.6 销售编辑 (edit)
+
+- 前置: `status IN ('pending', 'withdrawn')` AND (`sales_id = current_user.id` OR `created_by = current_user.id`)
+- 可编辑字段: title, description, request_type, research_scope, org_name, org_type, department, researcher_id, is_confidential
+- 动作: 更新字段, `updated_at = now()`
+- 注意: 编辑不改变状态。若为 withdrawn 状态需要重回 pending, 应使用 resubmit。
 
 ---
 
@@ -104,6 +146,7 @@ in_progress → completed   (研究员 complete)
 
 - 销售只能选择所属团队关联的机构
 - 研究员代提需求时, 机构列表取所选销售的团队机构
+- **admin 被选为销售时**: 机构列表显示全部 (admin 无 team_id 限制)
 - admin 可见所有机构
 
 ---
@@ -130,6 +173,18 @@ org_type 变化时:
 
 ## 7. 下载日志规则
 
-- 触发时机: 用户点击下载按钮, 前端先调 `/files/download/:id`, 后端在返回文件流的同时写入日志
-- 日志字段: `request_id`, `user_id`, `org_name` (取 request 的 org_name), `downloaded_at`
+- 触发时机: 用户点击下载按钮
+- **销售下载**: 弹窗选择机构 (调 `/organizations/by-team` 获取机构列表), 选好后发起下载请求并携带 `org_name` 参数
+- **研究员/admin 下载**: 直接下载, `org_name` 记录为 null
+- 日志字段: `request_id`, `user_id`, `org_name` (销售选择的机构, 非需求关联机构), `downloaded_at`
+- 用途: 追踪哪些机构对哪些需求成果感兴趣 (场景: 机构B下载了机构A提出的需求成果)
 - 统计查询: 批量聚合, 避免 N+1
+
+---
+
+## 8. 附件存储规则
+
+- 存储路径: `uploads/{request_id}/filename`
+- 按需求 ID 建子目录, 为后续多文件扩展预留结构
+- 本期每个需求仅支持单文件上传
+- `attachment_path` 字段存储相对路径

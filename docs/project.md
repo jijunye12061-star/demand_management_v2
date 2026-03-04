@@ -17,8 +17,8 @@
 | 数据校验   | Pydantic v2       | ≥2.9     | FastAPI 原生集成                                                               |
 | 数据库    | SQLite            | 先 SQLite | **保留现有 data.db**; 架构通过 `DATABASE_URL` 抽象, 后续可切换 PostgreSQL/MySQL, ORM 层无感知 |
 | 认证     | JWT (python-jose) | —        | access_token + refresh_token 双 token                                       |
-| 密码     | passlib[bcrypt]   | —        | 替换现有 SHA256, 做兼容迁移                                                         |
-| 文件存储   | 本地文件系统            | —        | 保持 `data/uploads/` 结构                                                      |
+| 密码     | bcrypt            | —        | 替换现有 SHA256, 做兼容迁移 (直接使用 bcrypt 库)                                        |
+| 文件存储   | 本地文件系统            | —        | `data/uploads/{request_id}/filename` 按需求归档                                 |
 | 任务调度   | APScheduler       | —        | 数据库备份、日志清理                                                                 |
 | 测试     | pytest + httpx    | —        | TestClient 同步测试 API                                                        |
 
@@ -62,7 +62,7 @@ server/
 │   │
 │   ├── models/                 # SQLAlchemy 模型 (与现有表结构 1:1 映射)
 │   │   ├── user.py
-│   │   ├── request.py
+│   │   ├── request.py          # 含 withdraw_reason 字段
 │   │   ├── team.py
 │   │   ├── organization.py
 │   │   └── download_log.py
@@ -77,15 +77,15 @@ server/
 │   │
 │   ├── api/                    # 路由 (按资源分文件)
 │   │   ├── auth.py             # POST /login, /refresh, /change-password
-│   │   ├── requests.py         # CRUD /requests
+│   │   ├── requests.py         # CRUD + accept/complete/withdraw/resubmit/cancel
 │   │   ├── users.py            # CRUD /users (admin)
 │   │   ├── teams.py            # CRUD /teams (admin)
 │   │   ├── organizations.py    # CRUD /organizations (admin)
 │   │   ├── stats.py            # GET /stats/* (admin)
-│   │   ├── exports.py          # GET /exports/requests (admin)
-│   │   └── files.py            # 上传/下载附件
+│   │   ├── exports.py          # GET /exports/requests (按角色区分字段)
+│   │   └── files.py            # 上传/下载附件 (含 org_name 参数)
 │   │
-│   ├── services/               # 业务逻辑 (从现有 services/ 平移)
+│   ├── services/               # 业务逻辑
 │   │   ├── request_service.py
 │   │   ├── stats_service.py
 │   │   ├── user_service.py
@@ -98,11 +98,11 @@ server/
 │
 ├── data/
 │   ├── data.db                 # ⚠️ 现有数据库 (直接复用)
-│   ├── uploads/                # 附件目录
+│   ├── uploads/                # 附件目录: uploads/{request_id}/filename
 │   └── backups/
 │
 ├── scripts/
-│   ├── migrate_passwords.py    # SHA256 → bcrypt 兼容迁移
+│   ├── migrate_v3.py           # 新增 password_version + withdraw_reason
 │   └── seed_data.py
 │
 ├── requirements.txt
@@ -118,16 +118,16 @@ web/
 │   │   ├── Login/              # 登录页
 │   │   ├── Sales/              # 销售端
 │   │   │   ├── SubmitRequest/  # 提交需求
-│   │   │   ├── MyRequests/     # 我的需求
+│   │   │   ├── MyRequests/     # 我的需求 (含编辑/重提交/取消)
 │   │   │   └── RequestFeed/    # 需求动态
 │   │   ├── Researcher/         # 研究端
 │   │   │   ├── SubmitRequest/
-│   │   │   ├── MyTasks/        # 我的任务
+│   │   │   ├── MyTasks/        # 我的任务 (含退回填原因)
 │   │   │   └── RequestFeed/
 │   │   └── Admin/              # 管理端
 │   │       ├── Dashboard/      # 工作量看板
 │   │       ├── Analytics/      # 多维分析
-│   │       ├── Export/         # 数据导出
+│   │       ├── Export/         # 数据导出 (全字段)
 │   │       └── Settings/       # 系统管理
 │   │           ├── Users/
 │   │           ├── Requests/
@@ -135,9 +135,10 @@ web/
 │   │           └── Teams/
 │   │
 │   ├── components/             # 通用组件
-│   │   ├── RequestDetail/      # 需求详情抽屉
+│   │   ├── RequestDetail/      # 需求详情抽屉 (mode: mine/feed/admin)
 │   │   ├── StatsCards/         # 统计卡片
-│   │   └── FileDownload/       # 下载按钮 (含日志上报)
+│   │   ├── FileDownload/       # 下载按钮 (含日志上报)
+│   │   └── OrgSelectModal/     # 销售下载选机构弹窗
 │   │
 │   ├── services/               # API 调用封装
 │   │   ├── auth.ts
@@ -228,14 +229,16 @@ chore: 构建/工具              style: 格式
 
 ### RESTful 约定
 
-| 动作 | 方法     | 路径                    | 示例                          |
-|----|--------|-----------------------|-----------------------------|
-| 列表 | GET    | /resources            | GET /api/requests           |
-| 详情 | GET    | /resources/:id        | GET /api/requests/1         |
-| 创建 | POST   | /resources            | POST /api/requests          |
-| 更新 | PUT    | /resources/:id        | PUT /api/requests/1         |
-| 删除 | DELETE | /resources/:id        | DELETE /api/requests/1      |
-| 操作 | POST   | /resources/:id/action | POST /api/requests/1/accept |
+| 动作 | 方法     | 路径                    | 示例                             |
+|----|--------|-----------------------|--------------------------------|
+| 列表 | GET    | /resources            | GET /api/requests              |
+| 详情 | GET    | /resources/:id        | GET /api/requests/1            |
+| 创建 | POST   | /resources            | POST /api/requests             |
+| 更新 | PUT    | /resources/:id        | PUT /api/requests/1            |
+| 删除 | DELETE | /resources/:id        | DELETE /api/requests/1         |
+| 操作 | POST   | /resources/:id/action | POST /api/requests/1/accept    |
+| 操作 | POST   | /resources/:id/action | POST /api/requests/1/withdraw  |
+| 操作 | POST   | /resources/:id/action | POST /api/requests/1/resubmit  |
 
 ### 认证
 
@@ -252,6 +255,7 @@ chore: 构建/工具              style: 格式
 
 1. **表结构**: 完全保留, SQLAlchemy 模型 1:1 映射现有表
 2. **密码**: 新增 `password_version` 字段, 首次登录时自动从 SHA256 迁移到 bcrypt
-3. **时间字段**: 统一为 UTC 存储, 前端展示时转北京时间
-4. **新增字段**: 通过 ALTER TABLE 追加, 不破坏现有数据
-5. **数据库可移植性**: 所有查询通过 SQLAlchemy ORM 抽象, 仅需修改 `DATABASE_URL` 即可切换到 PostgreSQL/MySQL, 应用代码无需改动
+3. **退回原因**: 新增 `withdraw_reason` 字段 (TEXT, nullable)
+4. **时间字段**: 统一为北京时间存储
+5. **新增字段**: 通过 ALTER TABLE 追加, 不破坏现有数据
+6. **数据库可移植性**: 所有查询通过 SQLAlchemy ORM 抽象, 仅需修改 `DATABASE_URL` 即可切换到 PostgreSQL/MySQL, 应用代码无需改动

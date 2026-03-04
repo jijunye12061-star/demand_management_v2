@@ -38,7 +38,7 @@ Response: { "message": "ok" }
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| status | str? | pending / in_progress / completed |
+| status | str? | pending / in_progress / completed / withdrawn / canceled |
 | request_type | str? | 需求类型 |
 | research_scope | str? | 研究范畴 |
 | org_type | str? | 客户类型 |
@@ -54,6 +54,15 @@ Response: { "message": "ok" }
 ```
 Response: { "items": [RequestItem], "total": int }
 ```
+
+**scope=feed 时字段过滤**:
+- 返回: id, title, description, request_type, research_scope, org_type, researcher_id, researcher_name, completed_at, attachment_path, download_count
+- 置 null: org_name, department, work_hours, sales_id, sales_name, is_confidential
+
+**scope=mine 时可见性**:
+- sales: `sales_id = 当前用户` 的所有需求 (排除 canceled)
+- researcher: `researcher_id = 当前用户` 的需求 (排除 withdrawn 和 canceled) + `created_by = 当前用户` 的需求
+- admin: 所有需求
 
 ### GET `/requests/:id`
 需求详情 (含下载统计)。
@@ -77,7 +86,13 @@ Request: {
 ```
 
 ### PUT `/requests/:id`
-编辑需求 (admin only)。
+编辑需求。
+
+**权限**:
+- admin: 可编辑任意需求的任意字段
+- sales: 仅可编辑自己创建的 `pending`/`withdrawn` 状态需求, 可编辑字段:
+  title, description, request_type, research_scope, org_name, org_type, department, researcher_id, is_confidential
+
 ```
 Request: { ...可编辑字段 }
 ```
@@ -102,9 +117,35 @@ Request (multipart/form-data): {
 ```
 
 ### POST `/requests/:id/withdraw`
-研究员撤回: pending 状态, 清空 researcher_id 归还销售。
+研究员退回: pending 状态, 必须填写退回原因。
 ```
+Request: { "reason": "str" }
 权限: researcher (且为该需求的 researcher_id, 仅 pending 状态)
+动作: status → 'withdrawn', 保留 researcher_id, 写入 withdraw_reason
+```
+
+### POST `/requests/:id/resubmit`
+销售修改后重新提交: withdrawn → pending。
+```
+Request: {
+  "title": "str?",
+  "description": "str?",
+  "request_type": "str?",
+  "research_scope": "str?",
+  "org_name": "str?",
+  "org_type": "str?",
+  "department": "str?",
+  "researcher_id": int?             // 重新选择研究员
+}
+权限: sales (且为该需求的 sales_id 或 created_by, 仅 withdrawn 状态)
+动作: 更新提交字段, status → 'pending', withdraw_reason → NULL
+```
+
+### POST `/requests/:id/cancel`
+销售取消需求 (软删除): pending/withdrawn → canceled。
+```
+权限: sales (且为该需求的 sales_id 或 created_by) 或 admin
+前置: status IN ('pending', 'withdrawn')
 ```
 
 ### PUT `/requests/:id/reassign`
@@ -128,8 +169,9 @@ Request: { "is_confidential": bool }
 ### GET `/files/download/:request_id`
 下载附件 (自动记录下载日志)。
 ```
+参数: org_name (str?, 销售下载时必传, 研究员/admin 不传)
 Response: FileResponse (streaming)
-Side effect: 写入 download_logs
+Side effect: 写入 download_logs (org_name: 销售选择的机构 / 研究员和admin为null)
 ```
 
 ### POST `/files/upload`
@@ -146,151 +188,163 @@ Response: { "path": "str" }
 ### GET `/users`
 用户列表。
 ```
-参数: role? (过滤角色)
-Response: [UserItem]
+参数: role?, keyword?
+Response: { "items": [UserItem], "total": int }
 ```
 
 ### GET `/users/researchers`
-研究员列表 (供下拉选择, 所有角色可用)。
+获取研究员列表 (供下拉选择)。
+```
+返回: role IN ('researcher', 'admin') 的用户
+Response: [{ "id": int, "display_name": "str", "team_id": int? }]
+```
 
 ### GET `/users/sales`
-销售列表 (供研究员代提需求选择)。
+获取销售列表 (供下拉选择)。
+```
+返回: role IN ('sales', 'admin') 的用户
+Response: [{ "id": int, "display_name": "str", "team_id": int? }]
+```
 
 ### POST `/users`
-创建用户。
+创建用户 (admin only)。
 ```
-Request: { "username", "password", "role", "display_name", "team_id?" }
+Request: { "username": "str", "password": "str", "role": "str", "display_name": "str", "team_id": int? }
 ```
 
 ### PUT `/users/:id`
-编辑用户。
+编辑用户 (admin only)。
+```
+Request: { "display_name?": "str", "role?": "str", "team_id?": int }
+```
 
 ### DELETE `/users/:id`
-删除用户。
+删除用户 (admin only)。
 
 ### PUT `/users/:id/reset-password`
-管理员重置用户密码。
+重置密码 (admin only)。
 ```
 Request: { "new_password": "str" }
 ```
 
 ---
 
-## 5. 团队 (`/teams`) — admin only
+## 5. 机构 (`/organizations`)
+
+### GET `/organizations`
+全部机构列表 (admin)。
+
+### GET `/organizations/by-team`
+按团队获取机构列表。
+```
+参数: team_id (int?, 不传则取当前用户 team_id; admin 且所选销售为 admin 时返回全部)
+```
+
+### POST `/organizations`
+创建机构 (admin only)。
+
+### PUT `/organizations/:id`
+编辑机构 (admin only)。
+
+### DELETE `/organizations/:id`
+删除机构 (admin only)。
+
+---
+
+## 6. 团队 (`/teams`)
 
 ### GET `/teams`
-团队列表。
+团队列表 (含 org_count, member_count)。
 
 ### POST `/teams`
-创建团队。
+创建团队 (admin only)。
 
 ### DELETE `/teams/:id`
-删除团队。
+删除团队 (admin only)。
 
 ### GET `/teams/:id/organizations`
-获取团队关联的机构列表。
+团队已分配的机构。
 
 ### PUT `/teams/:id/organizations`
-设置团队关联机构 (全量替换)。
+全量替换团队机构。
 ```
 Request: { "org_ids": [int] }
 ```
 
 ### PUT `/teams/:id/members`
-设置团队成员 (销售分配到团队)。
+全量替换团队成员。
 ```
 Request: { "user_ids": [int] }
 ```
 
 ---
 
-## 6. 机构 (`/organizations`) — admin only
-
-### GET `/organizations`
-机构列表。
-```
-参数: team_id? (按团队过滤, 用于销售端下拉)
-```
-
-### GET `/organizations/by-team`
-当前用户所属团队的机构列表 (销售/研究员可用)。
-
-### POST `/organizations`
-创建机构。
-
-### PUT `/organizations/:id`
-编辑机构。
-
-### DELETE `/organizations/:id`
-删除机构。
-
----
-
 ## 7. 统计 (`/stats`) — admin only
 
 ### GET `/stats/overview`
-总览卡片数据。
 ```
-参数: period (today / week / month / quarter / year)
-Response: { total, pending, in_progress, completed, total_hours }
+参数: period (today|week|month|quarter|year)
+Response: { "total": int, "pending": int, "in_progress": int, "completed": int, "total_hours": float }
 ```
 
 ### GET `/stats/researcher-ranking`
-研究员工作量排行。
 ```
 参数: period
-Response: [{ user_id, display_name, completed_count, work_hours, pending_count }]
+Response: [{ "user_id": int, "display_name": "str", "completed_count": int, "work_hours": float, "pending_count": int, "in_progress_count": int }]
 ```
 
 ### GET `/stats/researcher-matrix`
-研究员 × 多时间维度矩阵。
 ```
-Response: [{ display_name, today, week, month, quarter, year }]
+Response: [{ "name": "str", "today": int, "week": int, "month": int, "quarter": int, "year": int }]
 ```
 
 ### GET `/stats/type-matrix`
-需求类型 × 多时间维度矩阵。
+同上格式, 行=需求类型。
 
 ### GET `/stats/org-matrix`
-客户/机构视角统计。
+```
+Response: [{ "name": "str", "count": int, "hours": float }]
+```
 
 ### GET `/stats/sales-matrix`
-销售 × 多时间维度矩阵。
+同 researcher-matrix 格式, 行=销售。
 
 ### GET `/stats/charts`
-图表数据 (饼图 + 柱状图)。
 ```
 参数: period
 Response: {
-  type_distribution: [{ name, value }],
-  org_type_distribution: [{ name, value }],
-  researcher_workload: [{ name, completed, in_progress, pending }]
+  "type_distribution": [{ "name": "str", "value": int }],
+  "org_type_distribution": [{ "name": "str", "value": int }],
+  "researcher_workload": [{ "name": "str", "completed": int, "in_progress": int, "pending": int }]
 }
 ```
 
 ### GET `/stats/downloads`
-下载统计。
 ```
 Response: {
-  top_downloads: [{ request_id, title, total_count, unique_users }],
-  recent_logs: [{ request_title, user_name, org_name, downloaded_at }]
+  "top_downloads": [{ "request_id": int, "title": "str", "total_count": int, "unique_users": int }],
+  "recent_logs": [{ "request_title": "str", "user_name": "str", "org_name": "str?", "downloaded_at": "str" }]
 }
 ```
 
 ---
 
-## 8. 数据导出 (`/exports`) — admin only
+## 8. 导出 (`/exports`)
 
 ### GET `/exports/requests`
-导出 Excel。
+导出 Excel 文件。
+
+**权限与字段**:
+- admin: 全字段导出, 参数同 `GET /requests` 的筛选参数
+- sales/researcher: 仅导出 feed 可见的公开数据, 且仅包含展示字段 (title, description, request_type, research_scope, org_type, researcher_name, completed_at)
+
 ```
-参数: 同 GET /requests 的筛选参数
-Response: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (streaming)
+Response: StreamingResponse (Excel)
 ```
 
 ### GET `/exports/requests/preview`
-导出预览 (前 20 条)。
+导出预览 (admin only)。
 ```
-参数: 同上
+参数: 同 GET /requests 筛选参数
 Response: { "items": [RequestItem], "total": int }
 ```
