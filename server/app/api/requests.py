@@ -1,6 +1,7 @@
 import shutil
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, status
 
 from app.core.config import settings
 from app.core.deps import DB, CurrentUser, AdminUser
@@ -18,10 +19,12 @@ from app.utils.datetime_utils import now_beijing
 router = APIRouter(prefix="/requests", tags=["需求"])
 
 
+# ── FIX #1: status_ → Query(alias="status") ──────────────────────────
+# FastAPI 暴露的 query param 名称取决于函数参数名, status_ 会变成 ?status_=xxx
+# 前端传的是 ?status=xxx, 用 alias 映射
 @router.get("")
 def list_requests(
     db: DB, user: CurrentUser,
-    status_: str | None = None,
     request_type: str | None = None,
     research_scope: str | None = None,
     org_type: str | None = None,
@@ -33,9 +36,10 @@ def list_requests(
     scope: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    status_filter: str | None = Query(None, alias="status"),
 ):
     params = RequestListParams(
-        status=status_, request_type=request_type, research_scope=research_scope,
+        status=status_filter, request_type=request_type, research_scope=research_scope,
         org_type=org_type, researcher_id=researcher_id, sales_id=sales_id,
         keyword=keyword, date_from=date_from, date_to=date_to,
         scope=scope, page=page, page_size=page_size,
@@ -76,19 +80,47 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
     return {"id": req.id}
 
 
+# ── FIX #2: PUT 权限 — admin 全字段编辑 + sales 编辑自己的 pending/withdrawn ──
+# 原代码用 AdminUser 限制仅 admin 可编辑, 与 business-rules §3.6 不一致
 @router.put("/{request_id}")
-def update(request_id: int, body: RequestUpdate, db: DB, admin: AdminUser):
+def update(request_id: int, body: RequestUpdate, db: DB, user: CurrentUser):
     req = db.get(Request, request_id)
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
-    for k, v in body.model_dump(exclude_unset=True).items():
-        if k == "is_confidential" and v is not None:
-            setattr(req, k, 1 if v else 0)
-        else:
-            setattr(req, k, v)
-    req.updated_at = now_beijing()
-    db.commit()
-    return {"message": "ok"}
+
+    # admin: 可编辑任意需求的任意字段
+    if user.role == "admin":
+        for k, v in body.model_dump(exclude_unset=True).items():
+            if k == "is_confidential" and v is not None:
+                setattr(req, k, 1 if v else 0)
+            else:
+                setattr(req, k, v)
+        req.updated_at = now_beijing()
+        db.commit()
+        return {"message": "ok"}
+
+    # sales: 仅可编辑自己创建的 pending/withdrawn 需求, 限定字段
+    if user.role == "sales":
+        if req.status not in ("pending", "withdrawn"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "仅待处理或已退回状态可编辑")
+        if user.id not in (req.sales_id, req.created_by):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "无权编辑此需求")
+        sales_editable = {
+            "title", "description", "request_type", "research_scope",
+            "org_name", "org_type", "department", "researcher_id", "is_confidential",
+        }
+        for k, v in body.model_dump(exclude_unset=True).items():
+            if k not in sales_editable:
+                continue
+            if k == "is_confidential" and v is not None:
+                setattr(req, k, 1 if v else 0)
+            else:
+                setattr(req, k, v)
+        req.updated_at = now_beijing()
+        db.commit()
+        return {"message": "ok"}
+
+    raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
 
 
 @router.delete("/{request_id}")
@@ -110,6 +142,8 @@ def accept(request_id: int, db: DB, user: CurrentUser):
     return {"message": "ok"}
 
 
+# ── FIX #3: 附件存储路径 uploads/{request_id}/filename ──
+# 原代码存储为 upload_dir/{request_id}_{filename} (扁平), 与 business-rules §8 不一致
 @router.post("/{request_id}/complete")
 async def complete(
     request_id: int, db: DB, user: CurrentUser,
@@ -119,11 +153,13 @@ async def complete(
 ):
     attachment_path = None
     if attachment and attachment.filename:
-        upload_dir = settings.upload_path
-        dest = upload_dir / f"{request_id}_{attachment.filename}"
+        dest_dir = settings.upload_path / str(request_id)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / attachment.filename
         with open(dest, "wb") as f:
             shutil.copyfileobj(attachment.file, f)
-        attachment_path = str(dest)
+        # 存相对路径, 与 seed_data 保持一致
+        attachment_path = f"uploads/{request_id}/{attachment.filename}"
 
     try:
         complete_request(db, request_id, user, result_note, work_hours, attachment_path)
@@ -134,7 +170,6 @@ async def complete(
 
 @router.post("/{request_id}/withdraw")
 def withdraw(request_id: int, body: WithdrawRequest, db: DB, user: CurrentUser):
-    """研究员退回: pending → withdrawn, 必须填写退回原因"""
     try:
         withdraw_request(db, request_id, user, body.reason)
     except ValueError as e:
@@ -144,7 +179,6 @@ def withdraw(request_id: int, body: WithdrawRequest, db: DB, user: CurrentUser):
 
 @router.post("/{request_id}/resubmit")
 def resubmit(request_id: int, body: ResubmitRequest, db: DB, user: CurrentUser):
-    """销售重新提交: withdrawn → pending"""
     try:
         resubmit_request(db, request_id, user, body.model_dump(exclude_unset=True))
     except ValueError as e:
@@ -154,7 +188,6 @@ def resubmit(request_id: int, body: ResubmitRequest, db: DB, user: CurrentUser):
 
 @router.post("/{request_id}/cancel")
 def cancel(request_id: int, db: DB, user: CurrentUser):
-    """取消需求: pending/withdrawn → canceled"""
     try:
         cancel_request(db, request_id, user)
     except ValueError as e:

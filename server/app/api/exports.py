@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.core.deps import DB, CurrentUser
@@ -13,7 +13,6 @@ router = APIRouter(prefix="/exports", tags=["导出"])
 def export_requests(
     db: DB, user: CurrentUser,
     scope: str | None = None,
-    status_: str | None = None,
     request_type: str | None = None,
     research_scope: str | None = None,
     org_type: str | None = None,
@@ -22,27 +21,22 @@ def export_requests(
     keyword: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    status_filter: str | None = Query(None, alias="status"),
 ):
-    # 非 feed 导出仅管理员可用
     if scope != "feed" and user.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
-
     params = RequestListParams(
-        scope=scope,
-        status=status_, request_type=request_type, research_scope=research_scope,
-        org_type=org_type, researcher_id=researcher_id, sales_id=sales_id,
+        scope=scope, status=status_filter, request_type=request_type,
+        research_scope=research_scope, org_type=org_type,
+        researcher_id=researcher_id, sales_id=sales_id,
         keyword=keyword, date_from=date_from, date_to=date_to,
         page=1, page_size=10000,
     )
     items, _ = query_requests(db, user, params)
-
-    # feed 用精简脱敏列，admin 用全量列
     columns = FEED_COLUMNS if scope == "feed" else None
     buf = generate_excel(items, columns=columns)
-
     return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=requests_export.xlsx"},
     )
 
@@ -51,7 +45,6 @@ def export_requests(
 def export_preview(
     db: DB, user: CurrentUser,
     scope: str | None = None,
-    status_: str | None = None,
     request_type: str | None = None,
     research_scope: str | None = None,
     org_type: str | None = None,
@@ -60,14 +53,14 @@ def export_preview(
     keyword: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    status_filter: str | None = Query(None, alias="status"),
 ):
     if scope != "feed" and user.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
-
     params = RequestListParams(
-        scope=scope,
-        status=status_, request_type=request_type, research_scope=research_scope,
-        org_type=org_type, researcher_id=researcher_id, sales_id=sales_id,
+        scope=scope, status=status_filter, request_type=request_type,
+        research_scope=research_scope, org_type=org_type,
+        researcher_id=researcher_id, sales_id=sales_id,
         keyword=keyword, date_from=date_from, date_to=date_to,
         page=1, page_size=20,
     )

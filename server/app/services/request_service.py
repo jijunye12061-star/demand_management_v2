@@ -7,11 +7,14 @@ from app.models.download_log import DownloadLog
 from app.schemas.request import RequestListParams
 from app.utils.datetime_utils import now_beijing
 
+# scope=feed 时需要置 null 的敏感字段
+_FEED_MASKED_FIELDS = {"org_name", "department", "work_hours", "sales_id", "sales_name", "is_confidential"}
+
 
 def _confidential_filter(user: User):
     """保密需求仅 admin / created_by / sales_id / researcher_id 可见"""
     if user.role == "admin":
-        return True  # no filter
+        return True
     return or_(
         Request.is_confidential == 0,
         Request.created_by == user.id,
@@ -32,14 +35,13 @@ def _scope_filter(user: User, scope: str | None):
     if user.role == "sales":
         return and_(Request.sales_id == user.id, not_canceled)
     if user.role == "researcher":
-        # 研究员: 排除 withdrawn 和 canceled
         not_withdrawn = Request.status != "withdrawn"
         return and_(
             or_(Request.researcher_id == user.id, Request.created_by == user.id),
             not_canceled,
             or_(
-                Request.created_by == user.id,  # 自己代提的需求始终可见
-                not_withdrawn,  # 非自己代提的需求排除 withdrawn
+                Request.created_by == user.id,  # 自己代提的需求始终可见（含 withdrawn）
+                not_withdrawn,                   # 指派给自己的需求排除 withdrawn
             ),
         )
     return False
@@ -49,7 +51,6 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
     """Build filtered request query with visibility, confidential, and search filters."""
     sales_user = db.query(User.id, User.display_name).subquery("sales_u")
     researcher_user = db.query(User.id, User.display_name).subquery("researcher_u")
-
     dl_count = (
         db.query(DownloadLog.request_id, func.count(DownloadLog.id).label("dl_count"))
         .group_by(DownloadLog.request_id)
@@ -73,7 +74,7 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
     if scope_cond is not True:
         q = q.filter(scope_cond)
 
-    # Confidential filter (only for non-feed scope)
+    # Confidential filter (only for non-feed scope, feed already excludes confidential)
     if params.scope != "feed":
         conf_cond = _confidential_filter(user)
         if conf_cond is not True:
@@ -108,12 +109,21 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
         .all()
     )
 
+    is_feed = params.scope == "feed"
     items = []
     for req, s_name, r_name, dl in rows:
         d = {c.name: getattr(req, c.name) for c in req.__table__.columns}
         d["sales_name"] = s_name
         d["researcher_name"] = r_name
         d["download_count"] = dl
+
+        # ── FIX: feed 模式字段脱敏 ──
+        # business-rules §2.2: scope=feed 时 org_name, department, work_hours,
+        # sales_id, sales_name, is_confidential 置 null
+        if is_feed:
+            for field in _FEED_MASKED_FIELDS:
+                d[field] = None
+
         items.append(d)
 
     return items, total
@@ -167,7 +177,6 @@ def withdraw_request(db: Session, request_id: int, user: User, reason: str) -> R
     req.status = "withdrawn"
     req.withdraw_reason = reason
     req.updated_at = now_beijing()
-    # 保留 researcher_id 用于审计 (business-rules §3.3)
     db.commit()
     db.refresh(req)
     return req
@@ -182,7 +191,6 @@ def resubmit_request(db: Session, request_id: int, user: User, updates: dict) ->
         raise ValueError("仅退回状态可重新提交")
     if user.role != "admin" and user.id not in (req.sales_id, req.created_by):
         raise ValueError("无权重新提交此需求")
-    # 更新可编辑字段
     editable = {"title", "description", "request_type", "research_scope",
                 "org_name", "org_type", "department", "researcher_id"}
     for k, v in updates.items():
