@@ -2,10 +2,10 @@ from fastapi import APIRouter
 
 from app.core.deps import DB, AdminUser
 from app.services.stats_service import (
-    get_overview, get_researcher_ranking, get_charts, get_downloads,
+    get_overview, get_researcher_ranking, get_researcher_matrix,
     get_type_matrix, get_org_matrix, get_sales_matrix,
+    get_charts, get_downloads,
 )
-from app.services.stats_service import _researcher_matrix_direct as get_researcher_matrix
 
 router = APIRouter(prefix="/stats", tags=["统计"])
 
