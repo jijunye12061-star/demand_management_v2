@@ -6,16 +6,29 @@ from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, ResetPasswordRequest
 from app.utils.datetime_utils import now_beijing
+from app.models.team import Team
 
 router = APIRouter(prefix="/users", tags=["用户"])
 
 
-@router.get("", response_model=list[UserResponse])
+@router.get("")
 def list_users(db: DB, admin: AdminUser, role: str | None = None):
-    q = select(User)
+    q = (
+        select(User, Team.name.label("team_name"))
+        .outerjoin(Team, User.team_id == Team.id)
+    )
     if role:
         q = q.where(User.role == role)
-    return db.execute(q.order_by(User.id)).scalars().all()
+    rows = db.execute(q.order_by(User.id)).all()
+    return [
+        {
+            "id": u.id, "username": u.username, "role": u.role,
+            "display_name": u.display_name, "team_id": u.team_id,
+            "created_at": str(u.created_at) if u.created_at else None,
+            "team_name": tn,
+        }
+        for u, tn in rows
+    ]
 
 
 @router.get("/researchers", response_model=list[UserResponse])

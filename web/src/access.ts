@@ -1,10 +1,11 @@
 export default function access(initialState: { currentUser?: any } | undefined) {
   const { currentUser } = initialState || {};
+  const role = currentUser?.role;
 
-  // 这里返回的 key 必须和 config/routes.ts 里的 access 字段一模一样
+  // admin 同时具备三端权限，可以进入销售端、研究端和管理端
   return {
-    sales: currentUser?.role === 'sales',
-    researcher: currentUser?.role === 'researcher',
-    admin: currentUser?.role === 'admin',
+    sales: role === 'sales' || role === 'admin',
+    researcher: role === 'researcher' || role === 'admin',
+    admin: role === 'admin',
   };
 }

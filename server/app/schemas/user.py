@@ -22,6 +22,7 @@ class UserResponse(BaseModel):
     display_name: str
     team_id: int | None = None
     created_at: str | None = None
+    team_name: str | None = None
 
     model_config = {"from_attributes": True}
 
