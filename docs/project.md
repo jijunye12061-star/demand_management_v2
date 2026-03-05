@@ -17,7 +17,7 @@
 | 数据校验   | Pydantic v2       | ≥2.9     | FastAPI 原生集成                                                               |
 | 数据库    | SQLite            | 先 SQLite | **保留现有 data.db**; 架构通过 `DATABASE_URL` 抽象, 后续可切换 PostgreSQL/MySQL, ORM 层无感知 |
 | 认证     | JWT (python-jose) | —        | access_token + refresh_token 双 token                                       |
-| 密码     | bcrypt            | —        | 替换现有 SHA256, 做兼容迁移 (直接使用 bcrypt 库)                                        |
+| 密码     | bcrypt            | —        | 替换现有 SHA256, 做兼容迁移 (直接使用 bcrypt 库)                                         |
 | 文件存储   | 本地文件系统            | —        | `data/uploads/{request_id}/filename` 按需求归档                                 |
 | 任务调度   | APScheduler       | —        | 数据库备份、日志清理                                                                 |
 | 测试     | pytest + httpx    | —        | TestClient 同步测试 API                                                        |
@@ -229,16 +229,16 @@ chore: 构建/工具              style: 格式
 
 ### RESTful 约定
 
-| 动作 | 方法     | 路径                    | 示例                             |
-|----|--------|-----------------------|--------------------------------|
-| 列表 | GET    | /resources            | GET /api/requests              |
-| 详情 | GET    | /resources/:id        | GET /api/requests/1            |
-| 创建 | POST   | /resources            | POST /api/requests             |
-| 更新 | PUT    | /resources/:id        | PUT /api/requests/1            |
-| 删除 | DELETE | /resources/:id        | DELETE /api/requests/1         |
-| 操作 | POST   | /resources/:id/action | POST /api/requests/1/accept    |
-| 操作 | POST   | /resources/:id/action | POST /api/requests/1/withdraw  |
-| 操作 | POST   | /resources/:id/action | POST /api/requests/1/resubmit  |
+| 动作 | 方法     | 路径                    | 示例                            |
+|----|--------|-----------------------|-------------------------------|
+| 列表 | GET    | /resources            | GET /api/requests             |
+| 详情 | GET    | /resources/:id        | GET /api/requests/1           |
+| 创建 | POST   | /resources            | POST /api/requests            |
+| 更新 | PUT    | /resources/:id        | PUT /api/requests/1           |
+| 删除 | DELETE | /resources/:id        | DELETE /api/requests/1        |
+| 操作 | POST   | /resources/:id/action | POST /api/requests/1/accept   |
+| 操作 | POST   | /resources/:id/action | POST /api/requests/1/withdraw |
+| 操作 | POST   | /resources/:id/action | POST /api/requests/1/resubmit |
 
 ### 认证
 

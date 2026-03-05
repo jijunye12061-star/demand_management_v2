@@ -6,43 +6,44 @@
 
 ### 1.1 API 级权限
 
-| 资源 | 操作 | sales | researcher | admin |
-|------|------|-------|------------|-------|
-| requests | 列表 (mine) | ✅ | ✅ | ✅ |
-| requests | 列表 (feed) | ✅ | ✅ | ✅ |
-| requests | 创建 | ✅ | ✅ (代提) | ✅ |
-| requests | 编辑 (自己的, pending/withdrawn) | ✅ | ❌ | — |
-| requests | 编辑 (任意) | ❌ | ❌ | ✅ |
-| requests | 删除 | ❌ | ❌ | ✅ |
-| requests | 接受 | ❌ | ✅ (自己的) | ❌ |
-| requests | 完成 | ❌ | ✅ (自己的) | ❌ |
-| requests | 退回 (withdraw) | ❌ | ✅ (自己的, pending) | ❌ |
-| requests | 重新提交 (resubmit) | ✅ (自己的, withdrawn) | ❌ | ❌ |
-| requests | 取消 (cancel) | ✅ (自己的, pending/withdrawn) | ❌ | ❌ |
-| requests | 重新分配 | ❌ | ❌ | ✅ |
-| files | 下载 | ✅ (有权限, 需选机构) | ✅ (有权限) | ✅ |
-| exports | feed 导出 | ✅ (仅展示字段) | ✅ (仅展示字段) | ✅ (仅展示字段) |
-| exports | 全量导出 | ❌ | ❌ | ✅ |
-| users | CRUD | ❌ | ❌ | ✅ |
-| teams | CRUD | ❌ | ❌ | ✅ |
-| organizations | CRUD | ❌ | ❌ | ✅ |
-| organizations | 按团队查询 | ✅ | ✅ | ✅ |
-| stats | 所有 | ❌ | ❌ | ✅ |
+| 资源            | 操作                          | sales                      | researcher       | admin     |
+|---------------|-----------------------------|----------------------------|------------------|-----------|
+| requests      | 列表 (mine)                   | ✅                          | ✅                | ✅         |
+| requests      | 列表 (feed)                   | ✅                          | ✅                | ✅         |
+| requests      | 创建                          | ✅                          | ✅ (代提)           | ✅         |
+| requests      | 编辑 (自己的, pending/withdrawn) | ✅                          | ❌                | —         |
+| requests      | 编辑 (任意)                     | ❌                          | ❌                | ✅         |
+| requests      | 删除                          | ❌                          | ❌                | ✅         |
+| requests      | 接受                          | ❌                          | ✅ (自己的)          | ❌         |
+| requests      | 完成                          | ❌                          | ✅ (自己的)          | ❌         |
+| requests      | 退回 (withdraw)               | ❌                          | ✅ (自己的, pending) | ❌         |
+| requests      | 重新提交 (resubmit)             | ✅ (自己的, withdrawn)         | ❌                | ❌         |
+| requests      | 取消 (cancel)                 | ✅ (自己的, pending/withdrawn) | ❌                | ❌         |
+| requests      | 重新分配                        | ❌                          | ❌                | ✅         |
+| files         | 下载                          | ✅ (有权限, 需选机构)              | ✅ (有权限)          | ✅         |
+| exports       | feed 导出                     | ✅ (仅展示字段)                  | ✅ (仅展示字段)        | ✅ (仅展示字段) |
+| exports       | 全量导出                        | ❌                          | ❌                | ✅         |
+| users         | CRUD                        | ❌                          | ❌                | ✅         |
+| teams         | CRUD                        | ❌                          | ❌                | ✅         |
+| organizations | CRUD                        | ❌                          | ❌                | ✅         |
+| organizations | 按团队查询                       | ✅                          | ✅                | ✅         |
+| stats         | 所有                          | ❌                          | ❌                | ✅         |
 
 ### 1.2 前端路由权限
 
 ```typescript
 // access.ts
 export default {
-  '/sales':      ['sales'],
-  '/researcher': ['researcher'],
-  '/admin':      ['admin'],
+    '/sales': ['sales'],
+    '/researcher': ['researcher'],
+    '/admin': ['admin'],
 }
 ```
 
 ### 1.3 Admin 兼容规则
 
 admin 同时具备研究员和销售身份:
+
 - `GET /users/researchers` → 返回 `role IN ('researcher', 'admin')`
 - `GET /users/sales` → 返回 `role IN ('sales', 'admin')`
 - admin 被选为销售时, 机构列表显示全部 (不受团队限制)
@@ -54,11 +55,11 @@ admin 同时具备研究员和销售身份:
 
 ### 2.1 "我的需求" 模式 (scope=mine)
 
-| 角色 | 可见范围 |
-|------|---------|
-| sales | `sales_id = 当前用户` 的所有需求 (排除 canceled) |
+| 角色         | 可见范围                                                                           |
+|------------|--------------------------------------------------------------------------------|
+| sales      | `sales_id = 当前用户` 的所有需求 (排除 canceled)                                          |
 | researcher | `researcher_id = 当前用户` 的需求 (排除 withdrawn 和 canceled) + `created_by = 当前用户` 的需求 |
-| admin | 所有需求 |
+| admin      | 所有需求                                                                           |
 
 > **研究员退回后**: withdrawn 状态的需求不再出现在研究员的任务列表中, 但 `researcher_id` 保留用于审计。
 
@@ -69,12 +70,15 @@ admin 同时具备研究员和销售身份:
 所有角色看到的内容一致 — 已完成的公开需求。
 
 **字段过滤** (后端强制, scope=feed 时):
-- ✅ 返回: id, title, description, request_type, research_scope, org_type, researcher_id, researcher_name, completed_at, attachment_path, download_count
+
+- ✅ 返回: id, title, description, request_type, research_scope, org_type, researcher_id, researcher_name, completed_at,
+  attachment_path, download_count
 - ❌ 置 null: org_name, department, work_hours, sales_id, sales_name, is_confidential
 
 ### 2.3 保密需求过滤
 
 当 `is_confidential = 1` 时, 该需求仅以下人可见:
+
 - admin (任何管理员)
 - `created_by` = 该用户
 - `sales_id` = 该用户
@@ -122,14 +126,16 @@ in_progress → completed      (研究员 complete)
 
 ### 3.5 取消需求 (cancel)
 
-- 前置: `status IN ('pending', 'withdrawn')` AND (`sales_id = current_user.id` OR `created_by = current_user.id` OR `role = 'admin'`)
+- 前置: `status IN ('pending', 'withdrawn')` AND (`sales_id = current_user.id` OR `created_by = current_user.id` OR
+  `role = 'admin'`)
 - 动作: `status → 'canceled'`, `updated_at = now()`
 - canceled 需求从默认列表查询中过滤, 但保留用于审计
 
 ### 3.6 销售编辑 (edit)
 
 - 前置: `status IN ('pending', 'withdrawn')` AND (`sales_id = current_user.id` OR `created_by = current_user.id`)
-- 可编辑字段: title, description, request_type, research_scope, org_name, org_type, department, researcher_id, is_confidential
+- 可编辑字段: title, description, request_type, research_scope, org_name, org_type, department, researcher_id,
+  is_confidential
 - 动作: 更新字段, `updated_at = now()`
 - 注意: 编辑不改变状态。若为 withdrawn 状态需要重回 pending, 应使用 resubmit。
 

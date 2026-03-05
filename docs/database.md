@@ -25,21 +25,23 @@ requests ── 1:N ─── download_logs (request_id)
 ### 2.1 users
 
 ```sql
-CREATE TABLE users (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    username      TEXT    NOT NULL UNIQUE,
-    password      TEXT    NOT NULL,              -- 现有 SHA256, 新用户用 bcrypt
-    role          TEXT    NOT NULL,              -- sales | researcher | admin
-    display_name  TEXT    NOT NULL,
-    team_id       INTEGER REFERENCES teams(id),
-    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE users
+(
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    username     TEXT NOT NULL UNIQUE,
+    password     TEXT NOT NULL, -- 现有 SHA256, 新用户用 bcrypt
+    role         TEXT NOT NULL, -- sales | researcher | admin
+    display_name TEXT NOT NULL,
+    team_id      INTEGER REFERENCES teams (id),
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 ### 2.2 requests
 
 ```sql
-CREATE TABLE requests (
+CREATE TABLE requests
+(
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     title           TEXT    NOT NULL,
     description     TEXT,
@@ -48,14 +50,14 @@ CREATE TABLE requests (
     org_name        TEXT    NOT NULL,
     org_type        TEXT,
     department      TEXT,
-    sales_id        INTEGER NOT NULL REFERENCES users(id),
-    researcher_id   INTEGER REFERENCES users(id),
-    is_confidential INTEGER DEFAULT 0,
-    status          TEXT    DEFAULT 'pending',   -- pending | in_progress | completed | withdrawn | canceled
+    sales_id        INTEGER NOT NULL REFERENCES users (id),
+    researcher_id   INTEGER REFERENCES users (id),
+    is_confidential INTEGER   DEFAULT 0,
+    status          TEXT      DEFAULT 'pending', -- pending | in_progress | completed | withdrawn | canceled
     result_note     TEXT,
     attachment_path TEXT,
-    work_hours      REAL    DEFAULT 0,
-    created_by      INTEGER REFERENCES users(id),
+    work_hours      REAL      DEFAULT 0,
+    created_by      INTEGER REFERENCES users (id),
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP,
     completed_at    TIMESTAMP
@@ -65,9 +67,10 @@ CREATE TABLE requests (
 ### 2.3 teams
 
 ```sql
-CREATE TABLE teams (
+CREATE TABLE teams
+(
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL UNIQUE,
+    name       TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
@@ -75,9 +78,10 @@ CREATE TABLE teams (
 ### 2.4 organizations
 
 ```sql
-CREATE TABLE organizations (
+CREATE TABLE organizations
+(
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL UNIQUE,
+    name       TEXT NOT NULL UNIQUE,
     org_type   TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -86,27 +90,29 @@ CREATE TABLE organizations (
 ### 2.5 team_org_mapping
 
 ```sql
-CREATE TABLE team_org_mapping (
+CREATE TABLE team_org_mapping
+(
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    team_id    INTEGER NOT NULL REFERENCES teams(id),
-    org_id     INTEGER NOT NULL REFERENCES organizations(id),
+    team_id    INTEGER NOT NULL REFERENCES teams (id),
+    org_id     INTEGER NOT NULL REFERENCES organizations (id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(team_id, org_id)
+    UNIQUE (team_id, org_id)
 );
 ```
 
 ### 2.6 download_logs
 
 ```sql
-CREATE TABLE download_logs (
+CREATE TABLE download_logs
+(
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_id    INTEGER NOT NULL REFERENCES requests(id),
-    user_id       INTEGER NOT NULL REFERENCES users(id),
-    org_name      TEXT,                           -- 销售选择的机构 (非需求关联机构), 研究员/admin 为 null
+    request_id    INTEGER NOT NULL REFERENCES requests (id),
+    user_id       INTEGER NOT NULL REFERENCES users (id),
+    org_name      TEXT, -- 销售选择的机构 (非需求关联机构), 研究员/admin 为 null
     downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_dl_request ON download_logs(request_id);
-CREATE INDEX idx_dl_user    ON download_logs(user_id);
+CREATE INDEX idx_dl_request ON download_logs (request_id);
+CREATE INDEX idx_dl_user ON download_logs (user_id);
 ```
 
 ---
@@ -117,17 +123,20 @@ CREATE INDEX idx_dl_user    ON download_logs(user_id);
 
 ```sql
 -- 密码版本标记, 用于 SHA256→bcrypt 平滑迁移
-ALTER TABLE users ADD COLUMN password_version INTEGER DEFAULT 1;
+ALTER TABLE users
+    ADD COLUMN password_version INTEGER DEFAULT 1;
 -- 1 = SHA256 (legacy), 2 = bcrypt (new)
 ```
 
-**迁移策略**: 用户登录时, 若 `password_version=1`, 验证 SHA256 通过后自动升级为 bcrypt 并写回, 更新 `password_version=2`。
+**迁移策略**: 用户登录时, 若 `password_version=1`, 验证 SHA256 通过后自动升级为 bcrypt 并写回, 更新
+`password_version=2`。
 
 ### 3.2 requests 表追加
 
 ```sql
 -- 研究员退回原因
-ALTER TABLE requests ADD COLUMN withdraw_reason TEXT;
+ALTER TABLE requests
+    ADD COLUMN withdraw_reason TEXT;
 ```
 
 **用途**: 研究员执行退回操作时必须填写原因, 销售在「我的需求」中查看退回详情。重新提交后清空。

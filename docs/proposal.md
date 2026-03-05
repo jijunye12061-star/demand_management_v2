@@ -27,7 +27,8 @@
 - `admin` — 管理员: 全局可见, 统计分析, 系统管理
 
 > **Admin 兼容规则**: admin 同时具备研究员和销售身份。所有选择研究员/销售的下拉列表均包含 admin 用户。  
-> 即 `GET /users/researchers` 返回 `role IN ('researcher', 'admin')`，`GET /users/sales` 返回 `role IN ('sales', 'admin')`。  
+> 即 `GET /users/researchers` 返回 `role IN ('researcher', 'admin')`，`GET /users/sales` 返回
+`role IN ('sales', 'admin')`。  
 > admin 被选为销售时, 机构列表显示全部机构 (不受团队限制)。
 
 ### 2.2 需求流转 (核心工作流)
@@ -52,11 +53,12 @@
 **状态枚举**: `pending` | `in_progress` | `completed` | `withdrawn` | `canceled`
 
 **研究员退回流程**:
+
 1. 研究员对 `pending` 状态的需求执行退回操作, 必须填写**退回原因**
 2. 需求状态变为 `withdrawn`, 保留 `researcher_id` (记录谁退回的, 用于审计)
 3. 销售端看到「已退回」状态 + 退回原因, 可选择:
-   - **修改并重新提交**: 编辑需求详情 + 重新选择研究员 → 状态回到 `pending`
-   - **取消需求**: 状态变为 `canceled` (软删除)
+    - **修改并重新提交**: 编辑需求详情 + 重新选择研究员 → 状态回到 `pending`
+    - **取消需求**: 状态变为 `canceled` (软删除)
 
 **销售编辑权限**: 销售可编辑自己创建的 `pending` 或 `withdrawn` 状态的需求 (状态未进入 `in_progress` / `completed`)。
 
@@ -101,12 +103,15 @@
 - 支持附件快捷下载
 
 **展示字段** (仅以下字段对外可见):
+
 - ✅ title, description, request_type, research_scope, org_type, researcher_name, completed_at, attachment (可下载)
 
 **隐藏字段** (后端 scope=feed 时不返回):
+
 - ❌ org_name, department, work_hours, sales_name, is_confidential
 
 **导出 Excel**:
+
 - 所有角色均可导出需求动态, 但 **仅包含 feed 可见的公开数据和展示字段**
 - admin 通过管理端「数据导出」页导出完整数据 (全字段)
 
@@ -121,11 +126,11 @@
 
 ## 3. 明确排除 (本期不做)
 
-| 功能         | 原因                  |
-|------------|---------------------|
-| 邮箱/手机找回密码  | 用户体量小, admin 重置够用    |
-| 多文件上传      | 本期维持单文件, 目录结构已预留扩展  |
-| 消息通知       | 暂无邮件/IM 集成          |
-| 审批流        | 当前需求流转足够, 无多级审批需求   |
-| 国际化 (i18n) | 纯中文系统               |
-| 移动端原生 App  | Web 响应式优先           |
+| 功能         | 原因                 |
+|------------|--------------------|
+| 邮箱/手机找回密码  | 用户体量小, admin 重置够用  |
+| 多文件上传      | 本期维持单文件, 目录结构已预留扩展 |
+| 消息通知       | 暂无邮件/IM 集成         |
+| 审批流        | 当前需求流转足够, 无多级审批需求  |
+| 国际化 (i18n) | 纯中文系统              |
+| 移动端原生 App  | Web 响应式优先          |
