@@ -34,6 +34,20 @@ npm install
 npm run dev                # 默认 proxy /api → localhost:8000
 ```
 
+## 生产部署
+```bash
+# 迁移生产数据库
+cd server
+python scripts/migrate_production.py path/to/data.db
+
+# 构建前端
+cd web
+npm run build              # 产出 dist/
+
+# 部署: Nginx 托管 dist/ + 反向代理 /api → uvicorn
+# Windows 可用 NSSM 注册 uvicorn 为系统服务
+```
+
 ---
 
 ## 核心状态流转
@@ -51,7 +65,4 @@ in_progress → completed (研究员完成)
 
 ## 执行顺序建议
 
-Phase 0 → 1 → 2 → 3 (后端先行, 用 /docs 自测)
-→ Phase 4 → 5 (销售/研究前端, 并行于 Phase 6)
-→ Phase 6 → 7 (统计 API + 管理前端)
-→ Phase 8 (联调收尾)
+> ✅ Phase 0~8 已全部完成, 当前处于部署与优化阶段。

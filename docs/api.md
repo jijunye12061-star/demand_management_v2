@@ -369,6 +369,7 @@ Response: [{ "name": "str", "today": int, "week": int, "month": int, "quarter": 
 
 ### GET `/stats/org-matrix`
 
+| period | str? | 统计周期: today/week/month/quarter/year, 默认 year |
 ```
 Response: [{ "name": "str", "count": int, "hours": float }]
 ```
@@ -376,6 +377,7 @@ Response: [{ "name": "str", "count": int, "hours": float }]
 ### GET `/stats/sales-matrix`
 
 同 researcher-matrix 格式, 行=销售。
+现有的 `GET /stats/sales-matrix` 同理，实际代码调用的是 v2 版本，支持多周期列（today/week/month/quarter/year），不再是简单的 count+hours 格式。
 
 ### GET `/stats/charts`
 
@@ -396,6 +398,30 @@ Response: {
   "recent_logs": [{ "request_title": "str", "user_name": "str", "org_name": "str?", "downloaded_at": "str" }]
 }
 ```
+
+### GET `/stats/researcher-detail`
+查询单个研究员的详细统计。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| user_id | int | 研究员 ID |
+
+### GET `/stats/type-detail`
+查询单个需求类型的详细统计。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| request_type | str | 需求类型 |
+
+### GET `/stats/org-detail`
+查询单个机构的详细统计。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| org_name | str | 机构名称 |
+
+### GET `/stats/sales-detail`
+查询单个销售的详细统计。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| user_id | int | 销售 ID |
 
 ---
 
