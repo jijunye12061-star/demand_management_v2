@@ -14,7 +14,7 @@ router = APIRouter(prefix="/teams", tags=["团队"])
 
 @router.get("", response_model=list[TeamResponse])
 def list_teams(db: DB, admin: AdminUser):
-    teams = db.execute(select(Team).order_by(Team.id)).scalars().all()
+    teams = db.execute(select(Team).where(Team.is_deleted == 0).order_by(Team.id)).scalars().all()
     result = []
     for t in teams:
         org_count = db.execute(
@@ -39,11 +39,7 @@ def delete_team(team_id: int, db: DB, admin: AdminUser):
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "团队不存在")
-    for m in db.execute(select(TeamOrgMapping).where(TeamOrgMapping.team_id == team_id)).scalars():
-        db.delete(m)
-    for u in db.execute(select(User).where(User.team_id == team_id)).scalars():
-        u.team_id = None
-    db.delete(team)
+    team.is_deleted = 1
     db.commit()
     return {"message": "ok"}
 

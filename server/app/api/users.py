@@ -16,6 +16,7 @@ def list_users(db: DB, admin: AdminUser, role: str | None = None):
     q = (
         select(User, Team.name.label("team_name"))
         .outerjoin(Team, User.team_id == Team.id)
+        .where(User.is_deleted == 0)  # ← 新增
     )
     if role:
         q = q.where(User.role == role)
@@ -34,14 +35,16 @@ def list_users(db: DB, admin: AdminUser, role: str | None = None):
 @router.get("/researchers", response_model=list[UserResponse])
 def list_researchers(db: DB, user: CurrentUser):
     return db.execute(
-        select(User).where(User.role.in_(["researcher", "admin"])).order_by(User.display_name)
+        select(User).where(User.role.in_(["researcher", "admin"]), User.is_deleted == 0)
+        .order_by(User.display_name)
     ).scalars().all()
 
 
 @router.get("/sales", response_model=list[UserResponse])
 def list_sales(db: DB, user: CurrentUser):
     return db.execute(
-        select(User).where(User.role.in_(["sales", "admin"])).order_by(User.display_name)
+        select(User).where(User.role.in_(["sales", "admin"]), User.is_deleted == 0)
+        .order_by(User.display_name)
     ).scalars().all()
 
 
@@ -78,7 +81,7 @@ def delete_user(user_id: int, db: DB, admin: AdminUser):
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "用户不存在")
-    db.delete(user)
+    user.is_deleted = 1
     db.commit()
     return {"message": "ok"}
 

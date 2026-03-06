@@ -11,3 +11,4 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     org_type: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str | None] = mapped_column(String)
+    is_deleted: Mapped[int] = mapped_column(Integer, default=0)

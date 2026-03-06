@@ -15,3 +15,4 @@ class User(Base):
     team_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("teams.id"))
     created_at: Mapped[str | None] = mapped_column(String)
     password_version: Mapped[int] = mapped_column(Integer, default=1)  # 1=SHA256, 2=bcrypt
+    is_deleted: Mapped[int] = mapped_column(Integer, default=0)  # 0=正常, 1=已删除

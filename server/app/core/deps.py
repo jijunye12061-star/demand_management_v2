@@ -22,6 +22,8 @@ def get_current_user(
     user = db.get(User, int(payload["sub"]))
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户不存在")
+    if getattr(user, 'is_deleted', 0) == 1:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "该账户已被停用")
     return user
 
 

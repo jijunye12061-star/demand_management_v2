@@ -16,7 +16,7 @@ router = APIRouter(prefix="/organizations", tags=["机构"])
 
 @router.get("", response_model=list[OrgResponse])
 def list_organizations(db: DB, admin: AdminUser, team_id: int | None = None):
-    q = select(Organization)
+    q = select(Organization).where(Organization.is_deleted == 0)  # ← 新增
     if team_id:
         org_ids = db.execute(select(TeamOrgMapping.org_id).where(TeamOrgMapping.team_id == team_id)).scalars().all()
         q = q.where(Organization.id.in_(org_ids))
@@ -30,20 +30,21 @@ def list_orgs_by_user_team(
     load_all: bool = False,
 ):
     # load_all=true: 研究员代提时选了 admin 作为销售，需要加载全部机构
+    base = select(Organization).where(Organization.is_deleted == 0)  # ← 公共过滤
+
     if load_all:
-        return db.execute(select(Organization).order_by(Organization.name)).scalars().all()
+        return db.execute(base.order_by(Organization.name)).scalars().all()
 
     tid = team_id or user.team_id
     if not tid:
         # admin 无 team_id 时返回全部
         if user.role == "admin":
-            return db.execute(select(Organization).order_by(Organization.name)).scalars().all()
+            return db.execute(base.order_by(Organization.name)).scalars().all()
         return []
     org_ids = db.execute(select(TeamOrgMapping.org_id).where(TeamOrgMapping.team_id == tid)).scalars().all()
     if not org_ids:
         return []
-    return db.execute(select(Organization).where(Organization.id.in_(org_ids)).order_by(Organization.name)).scalars().all()
-
+    return db.execute(base.where(Organization.id.in_(org_ids)).order_by(Organization.name)).scalars().all()
 
 @router.post("", response_model=OrgResponse, status_code=status.HTTP_201_CREATED)
 def create_org(body: OrgCreate, db: DB, admin: AdminUser):
@@ -71,6 +72,6 @@ def delete_org(org_id: int, db: DB, admin: AdminUser):
     org = db.get(Organization, org_id)
     if not org:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "机构不存在")
-    db.delete(org)
+    org.is_deleted = 1
     db.commit()
     return {"message": "ok"}

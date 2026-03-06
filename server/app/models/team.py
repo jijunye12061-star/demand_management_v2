@@ -10,6 +10,7 @@ class Team(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     created_at: Mapped[str | None] = mapped_column(String)
+    is_deleted: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class TeamOrgMapping(Base):

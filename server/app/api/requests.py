@@ -127,7 +127,8 @@ def delete_request(request_id: int, db: DB, admin: AdminUser):
     req = db.get(Request, request_id)
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
-    db.delete(req)
+    req.status = "deleted"
+    req.updated_at = now_beijing()
     db.commit()
     return {"message": "ok"}
 

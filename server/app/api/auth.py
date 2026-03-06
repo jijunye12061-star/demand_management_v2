@@ -20,6 +20,10 @@ def login(body: LoginRequest, db: DB):
     if not user or not verify_password(body.password, user.password, user.password_version):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户名或密码错误")
 
+    # 软删除用户禁止登录
+    if getattr(user, 'is_deleted', 0) == 1:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "该账户已被停用")
+
     # Auto-upgrade SHA256 → bcrypt on successful login
     if user.password_version == 1:
         new_hash, new_ver = upgrade_password(body.password)

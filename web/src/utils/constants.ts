@@ -5,6 +5,7 @@ export const STATUS_ENUM: Record<string, { text: string; status: string }> = {
   completed: { text: '已完成', status: 'Success' },
   withdrawn: { text: '已退回', status: 'Error' },
   canceled: { text: '已取消', status: 'Default' },
+  deleted: { text: '已删除', status: 'Default' },  // ← 新增
 };
 
 // 需求类型选项

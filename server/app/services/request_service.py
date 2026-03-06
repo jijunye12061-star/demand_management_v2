@@ -28,20 +28,20 @@ def _scope_filter(user: User, scope: str | None):
     if scope == "feed":
         return and_(Request.status == "completed", Request.is_confidential == 0)
 
-    # scope=mine (default)
-    not_canceled = Request.status != "canceled"
+    # scope=mine (default) — 排除 canceled 和 deleted
+    visible = Request.status.not_in(("canceled", "deleted"))
     if user.role == "admin":
-        return not_canceled
+        return visible
     if user.role == "sales":
-        return and_(Request.sales_id == user.id, not_canceled)
+        return and_(Request.sales_id == user.id, visible)
     if user.role == "researcher":
         not_withdrawn = Request.status != "withdrawn"
         return and_(
             or_(Request.researcher_id == user.id, Request.created_by == user.id),
-            not_canceled,
+            visible,
             or_(
-                Request.created_by == user.id,  # 自己代提的需求始终可见（含 withdrawn）
-                not_withdrawn,                   # 指派给自己的需求排除 withdrawn
+                Request.created_by == user.id,
+                not_withdrawn,
             ),
         )
     return False
