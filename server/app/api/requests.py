@@ -47,6 +47,63 @@ def list_requests(
     return {"items": items, "total": total}
 
 
+@router.get("/feed-stats")
+def feed_stats(
+    db: DB, user: CurrentUser,
+    request_type: str | None = None,
+    research_scope: str | None = None,
+    org_type: str | None = None,
+    keyword: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+):
+    """需求动态图表统计：按筛选条件聚合 org_type × request_type × research_scope"""
+    from sqlalchemy import func, and_, or_
+
+    q = db.query(Request).filter(
+        Request.status == "completed",
+        Request.is_confidential == 0,
+    )
+    if request_type:
+        q = q.filter(Request.request_type == request_type)
+    if research_scope:
+        q = q.filter(Request.research_scope == research_scope)
+    if org_type:
+        q = q.filter(Request.org_type == org_type)
+    if keyword:
+        kw = f"%{keyword}%"
+        q = q.filter(or_(Request.title.like(kw), Request.description.like(kw)))
+    if date_from:
+        q = q.filter(Request.created_at >= date_from)
+    if date_to:
+        q = q.filter(Request.created_at <= date_to + " 23:59:59")
+
+    rows = q.all()
+
+    # 聚合: org_type × request_type
+    ot_rt: dict[tuple, int] = {}
+    # 聚合: org_type × research_scope
+    ot_rs: dict[tuple, int] = {}
+    for r in rows:
+        ot = r.org_type or "未知"
+        rt = r.request_type or "未知"
+        rs = r.research_scope or "未知"
+        ot_rt[(ot, rt)] = ot_rt.get((ot, rt), 0) + 1
+        ot_rs[(ot, rs)] = ot_rs.get((ot, rs), 0) + 1
+
+    return {
+        "total": len(rows),
+        "by_org_request": [
+            {"org_type": k[0], "request_type": k[1], "count": v}
+            for k, v in sorted(ot_rt.items())
+        ],
+        "by_org_scope": [
+            {"org_type": k[0], "research_scope": k[1], "count": v}
+            for k, v in sorted(ot_rs.items())
+        ],
+    }
+
+
 @router.get("/{request_id}", response_model=RequestResponse)
 def get_request(request_id: int, db: DB, user: CurrentUser):
     req = db.get(Request, request_id)

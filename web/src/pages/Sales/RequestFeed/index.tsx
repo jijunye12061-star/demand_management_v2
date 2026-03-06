@@ -8,6 +8,7 @@ import type { RequestItem } from '@/services/typings';
 import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
+import FeedCharts from '@/components/FeedCharts';
 
 const RequestFeed: React.FC = () => {
   const { message } = App.useApp();
@@ -15,6 +16,7 @@ const RequestFeed: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<RequestItem | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [chartFilter, setChartFilter] = useState<Record<string, any>>({});
 
   const handleExport = async () => {
     try {
@@ -126,6 +128,8 @@ const RequestFeed: React.FC = () => {
 
   return (
     <PageContainer title="需求动态">
+      <FeedCharts filterParams={chartFilter} />
+
       <ProTable<RequestItem>
         headerTitle="已完成的公开需求"
         actionRef={actionRef}
@@ -133,6 +137,19 @@ const RequestFeed: React.FC = () => {
         search={{ labelWidth: 100 }}
         request={async (params) => getRequests({ ...params, scope: 'feed' })}
         columns={columns}
+        onSubmit={(params) => {
+          // 同步筛选条件到图表（处理日期范围转换）
+          const p: Record<string, any> = { ...params };
+          if (params.dateRange?.length === 2) {
+            p.date_from = params.dateRange[0];
+            p.date_to = params.dateRange[1];
+          }
+          delete p.dateRange;
+          // 清除空值
+          Object.keys(p).forEach((k) => { if (!p[k]) delete p[k]; });
+          setChartFilter(p);
+        }}
+        onReset={() => setChartFilter({})}
         toolBarRender={() => [
           <Button
             key="export"

@@ -8,6 +8,7 @@ import type { RequestItem } from '@/services/typings';
 import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
+import FeedCharts from '@/components/FeedCharts';
 
 /**
  * 研究员需求动态 — 与销售端共享 scope=feed 数据源
@@ -19,6 +20,7 @@ const ResearcherRequestFeed: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<RequestItem | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [chartFilter, setChartFilter] = useState<Record<string, any>>({});
 
   const handleExport = async () => {
     try {
@@ -108,8 +110,10 @@ const ResearcherRequestFeed: React.FC = () => {
     },
   ];
 
-  return (
+return (
     <PageContainer title="需求动态">
+      <FeedCharts filterParams={chartFilter} />
+
       <ProTable<RequestItem>
         headerTitle="已完成的公开需求"
         actionRef={actionRef}
@@ -117,6 +121,17 @@ const ResearcherRequestFeed: React.FC = () => {
         search={{ labelWidth: 100 }}
         request={async (params) => getRequests({ ...params, scope: 'feed' })}
         columns={columns}
+        onSubmit={(params) => {
+          const p: Record<string, any> = { ...params };
+          if (params.dateRange?.length === 2) {
+            p.date_from = params.dateRange[0];
+            p.date_to = params.dateRange[1];
+          }
+          delete p.dateRange;
+          Object.keys(p).forEach((k) => { if (!p[k]) delete p[k]; });
+          setChartFilter(p);
+        }}
+        onReset={() => setChartFilter({})}
         toolBarRender={() => [
           <Button
             key="export"

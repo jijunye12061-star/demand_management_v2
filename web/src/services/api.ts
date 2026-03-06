@@ -134,3 +134,15 @@ export async function revokeAcceptRequest(id: number) {
     method: 'POST',
   });
 }
+
+/** 需求动态图表统计 */
+export async function getFeedStats(params?: Record<string, any>) {
+  return request<{
+    total: number;
+    by_org_request: { org_type: string; request_type: string; count: number }[];
+    by_org_scope: { org_type: string; research_scope: string; count: number }[];
+  }>('/api/v1/requests/feed-stats', {
+    method: 'GET',
+    params,
+  });
+}
