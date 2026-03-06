@@ -1,15 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { PageContainer, ProTable } from '@ant-design/pro-components';
+import React, { useState, useEffect } from 'react';
+import { PageContainer, ProTable, StatisticCard } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
-import { Tabs, Segmented, Card, Row, Col, Spin, Input, Select, Space, App } from 'antd';
+import { Tabs, Segmented, Card, Row, Col, Spin, Select, Space, App, Tag } from 'antd';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, LineChart, Line,
 } from 'recharts';
 import {
-  getCharts, getResearcherMatrix, getTypeMatrix,
+  getCharts, getResearcherMatrix, getResearcherRanking, getTypeMatrix,
   getOrgMatrix, getSalesMatrix, getDownloadStats,
+  getResearcherDetail, getTypeDetail, getOrgDetail, getSalesDetail,
 } from '@/services/admin';
+import { getRequests } from '@/services/api';
+import type { RequestItem } from '@/services/typings';
+import { STATUS_ENUM } from '@/utils/constants';
 
 const COLORS = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16', '#2f54eb', '#a0d911'];
 
@@ -21,9 +25,7 @@ const PERIOD_ITEMS = [
   { label: '今年', value: 'year' },
 ];
 
-// ─────────────────────────────────────────────────────────
-// 通用：周期选择器 + 简洁饼图/柱状图
-// ─────────────────────────────────────────────────────────
+// ─── 通用组件 ─────────────────────────────────────────────
 
 const PeriodSelector: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
   <div style={{ marginBottom: 16 }}>
@@ -33,67 +35,88 @@ const PeriodSelector: React.FC<{ value: string; onChange: (v: string) => void }>
 
 const RPie: React.FC<{ data: { name: string; value: number }[]; title: string; height?: number }> = ({ data, title, height = 280 }) => {
   const total = data.reduce((s, d) => s + d.value, 0);
-  if (!total) return <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>暂无数据</div>;
+  if (!total) return <Card title={title} size="small"><div style={{ textAlign: 'center', color: '#999', padding: 40 }}>暂无数据</div></Card>;
+  // @ts-ignore
   return (
     <Card title={title} size="small">
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
-            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+            label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
             {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
           </Pie>
-          <Tooltip formatter={(v: number) => [`${v} 件`, '数量']} />
+          <Tooltip formatter={(v: any) => [`${v} 件`, '数量']} />
         </PieChart>
       </ResponsiveContainer>
     </Card>
   );
 };
 
-// ─────────────────────────────────────────────────────────
-// Tab 1: 统计看板
-// ─────────────────────────────────────────────────────────
+/** 周趋势折线图 */
+const WeeklyTrend: React.FC<{ data: { week: string; count: number }[]; title: string }> = ({ data, title }) => (
+  <Card title={title} size="small">
+    <ResponsiveContainer width="100%" height={260}>
+      <LineChart data={data} margin={{ left: 0, right: 20 }}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="week" tick={{ fontSize: 10 }} />
+        <YAxis allowDecimals={false} />
+        <Tooltip />
+        <Line type="monotone" dataKey="count" name="完成件数" stroke="#1890ff" strokeWidth={2} dot={{ r: 3 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  </Card>
+);
 
-const ChartsTab: React.FC = () => {
-  const { message } = App.useApp();
-  const [period, setPeriod] = useState('month');
-  const [charts, setCharts] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+/** Top N 横向柱状图 */
+const TopBar: React.FC<{ data: { name: string; value: number }[]; title: string; color?: string }> = ({ data, title, color = '#1890ff' }) => (
+  <Card title={title} size="small">
+    <ResponsiveContainer width="100%" height={Math.max(200, data.length * 36)}>
+      <BarChart data={data} layout="vertical" margin={{ left: 80, right: 20 }}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis type="number" allowDecimals={false} />
+        <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} />
+        <Tooltip />
+        <Bar dataKey="value" name="件数" fill={color} />
+      </BarChart>
+    </ResponsiveContainer>
+  </Card>
+);
 
-  useEffect(() => {
-    setLoading(true);
-    getCharts(period).then(setCharts).catch(() => message.error('获取图表数据失败')).finally(() => setLoading(false));
-  }, [period]);
+/** 需求明细表（通用） */
+const requestDetailCols: ProColumns<RequestItem>[] = [
+  { title: '标题', dataIndex: 'title', ellipsis: true, width: 200 },
+  { title: '需求类型', dataIndex: 'request_type', width: 100 },
+  { title: '机构', dataIndex: 'org_name', ellipsis: true, width: 120 },
+  { title: '研究员', dataIndex: 'researcher_name', width: 80 },
+  {
+    title: '状态', dataIndex: 'status', width: 80,
+    render: (_, r) => { const c = STATUS_ENUM[r.status]; return <Tag color={c?.status?.toLowerCase()}>{c?.text || r.status}</Tag>; },
+  },
+  { title: '工时', dataIndex: 'work_hours', width: 60 },
+  { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 160 },
+];
 
-  const workload = charts?.researcher_workload || [];
+/** 矩阵表通用列 */
+const matrixCols = (label: string): ProColumns<any>[] => [
+  { title: label, dataIndex: 'name', fixed: 'left', width: 120 },
+  { title: '今日', dataIndex: 'today', sorter: (a: any, b: any) => a.today - b.today },
+  { title: '本周', dataIndex: 'week', sorter: (a: any, b: any) => a.week - b.week },
+  { title: '本月', dataIndex: 'month', sorter: (a: any, b: any) => a.month - b.month },
+  { title: '当季', dataIndex: 'quarter', sorter: (a: any, b: any) => a.quarter - b.quarter },
+  { title: '今年', dataIndex: 'year', sorter: (a: any, b: any) => a.year - b.year },
+];
 
-  return (
-    <Spin spinning={loading}>
-      <PeriodSelector value={period} onChange={setPeriod} />
-      <Row gutter={16}>
-        <Col span={12}><RPie data={charts?.type_distribution || []} title="需求类型分布" /></Col>
-        <Col span={12}><RPie data={charts?.org_type_distribution || []} title="客户类型分布" /></Col>
-      </Row>
-      <Card title="研究员工作量对比" size="small" style={{ marginTop: 16 }}>
-        <ResponsiveContainer width="100%" height={Math.max(260, workload.length * 36)}>
-          <BarChart data={workload} layout="vertical" margin={{ left: 60, right: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis type="number" />
-            <YAxis dataKey="name" type="category" tick={{ fontSize: 12 }} width={70} />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="completed" name="已完成" fill="#52c41a" stackId="a" />
-            <Bar dataKey="in_progress" name="处理中" fill="#1890ff" stackId="a" />
-            <Bar dataKey="pending" name="待处理" fill="#faad14" stackId="a" />
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
-    </Spin>
-  );
-};
+/** 矩阵合计行 */
+const calcSummary = (matrix: any[]) => matrix.length ? {
+  name: '合计',
+  ...['today', 'week', 'month', 'quarter', 'year'].reduce((acc: any, k) => {
+    acc[k] = matrix.reduce((s, r) => s + (r[k] || 0), 0); return acc;
+  }, {}),
+} : null;
 
-// ─────────────────────────────────────────────────────────
-// Tab 2: 研究员视角 (矩阵 + 图表)
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// Tab 1: 研究员视角
+// ═════════════════════════════════════════════════════════
 
 const ResearcherTab: React.FC = () => {
   const { message } = App.useApp();
@@ -101,102 +124,137 @@ const ResearcherTab: React.FC = () => {
   const [charts, setCharts] = useState<any>(null);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | undefined>();
+  const [detail, setDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const load = async (p: string) => {
+  // 加载总览
+  useEffect(() => {
     setLoading(true);
-    try {
-      const [m, c] = await Promise.all([getResearcherMatrix(), getCharts(p)]);
-      setMatrix(m);
-      setCharts(c);
-    } catch { message.error('加载失败'); }
-    finally { setLoading(false); }
-  };
+    Promise.all([getResearcherMatrix(), getCharts(period)])
+      .then(([m, c]) => { setMatrix(m); setCharts(c); })
+      .catch(() => message.error('加载失败'))
+      .finally(() => setLoading(false));
+  }, [period]);
 
-  useEffect(() => { load(period); }, [period]);
+  // 加载个人详情
+  useEffect(() => {
+    if (!selectedId) { setDetail(null); return; }
+    setDetailLoading(true);
+    getResearcherDetail(selectedId)
+      .then(setDetail)
+      .catch(() => message.error('获取研究员详情失败'))
+      .finally(() => setDetailLoading(false));
+  }, [selectedId]);
 
-  // 根据当前选择的 period 维度生成柱状图
-  const periodKey = period as string;
-  const barData = matrix.map((r) => ({ name: r.name, 完成件数: r[periodKey] || 0 })).filter(d => d.完成件数 > 0);
+  // 下拉选项：从 matrix 提取（matrix 已含 name，但无 user_id；用 ranking 数据更好）
+  // 但 matrix 没有 user_id。需从 charts.researcher_workload 也没有。
+  // 改用 researcher-ranking 获取 user_id → 但不想多发请求
+  // 方案：从 matrix 用 name 做临时 key，detail 接口改用 name 查？不行，需 user_id。
+  // 最好的做法：在 matrix 也返回 user_id。但改动大。
+  // 折中：用 researcher-ranking 获取选项列表（已有 user_id + display_name）
+  const [researchers, setResearchers] = useState<{ user_id: number; display_name: string }[]>([]);
+  useEffect(() => {
+    getResearcherRanking('year').then(setResearchers).catch(() => {});
+  }, []);
+
+  const periodKey = period;
+  const barData = matrix.map(r => ({ name: r.name, 完成件数: r[periodKey] || 0 })).filter(d => d.完成件数 > 0);
   const workload = charts?.researcher_workload || [];
-  // 工时图
   const hoursData = workload.map((r: any) => ({ name: r.name, 已完成: r.completed, 处理中: r.in_progress, 待处理: r.pending }));
-
-  const matrixCols: ProColumns<any>[] = [
-    { title: '研究员', dataIndex: 'name', fixed: 'left', width: 100 },
-    { title: '今日', dataIndex: 'today', sorter: (a: any, b: any) => a.today - b.today },
-    { title: '本周', dataIndex: 'week', sorter: (a: any, b: any) => a.week - b.week },
-    { title: '本月', dataIndex: 'month', sorter: (a: any, b: any) => a.month - b.month },
-    { title: '当季', dataIndex: 'quarter', sorter: (a: any, b: any) => a.quarter - b.quarter },
-    { title: '今年', dataIndex: 'year', sorter: (a: any, b: any) => a.year - b.year },
-  ];
-
-  // 总计行
-  const summary = matrix.length ? {
-    name: '合计',
-    today: matrix.reduce((s, r) => s + (r.today || 0), 0),
-    week: matrix.reduce((s, r) => s + (r.week || 0), 0),
-    month: matrix.reduce((s, r) => s + (r.month || 0), 0),
-    quarter: matrix.reduce((s, r) => s + (r.quarter || 0), 0),
-    year: matrix.reduce((s, r) => s + (r.year || 0), 0),
-  } : null;
+  const summary = calcSummary(matrix);
 
   return (
-    <Spin spinning={loading}>
-      <PeriodSelector value={period} onChange={setPeriod} />
+    <Spin spinning={loading || detailLoading}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <PeriodSelector value={period} onChange={setPeriod} />
+        <Select
+          allowClear placeholder="选择研究员查看个人详情"
+          style={{ width: 240 }}
+          showSearch optionFilterProp="label"
+          options={researchers.map(r => ({ label: r.display_name, value: r.user_id }))}
+          value={selectedId}
+          onChange={(v) => setSelectedId(v)}
+        />
+      </Space>
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
-          <Card title={`研究员完成件数 (${PERIOD_ITEMS.find(p => p.value === period)?.label})`} size="small">
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={barData} margin={{ left: 0, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="完成件数" fill="#1890ff" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card title="研究员任务状态分布" size="small">
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={hoursData} margin={{ left: 0, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="已完成" fill="#52c41a" stackId="s" />
-                <Bar dataKey="处理中" fill="#1890ff" stackId="s" />
-                <Bar dataKey="待处理" fill="#faad14" stackId="s" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 需求类型 + 客户类型分布 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}><RPie data={charts?.type_distribution || []} title="需求类型分布" height={240} /></Col>
-        <Col span={12}><RPie data={charts?.org_type_distribution || []} title="客户类型分布" height={240} /></Col>
-      </Row>
-
-      <ProTable
-        headerTitle="研究员完成数矩阵 (按时间维度)"
-        columns={matrixCols}
-        dataSource={summary ? [...matrix, summary] : matrix}
-        rowKey="name"
-        search={false} pagination={false} options={false} size="middle"
-        rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
-      />
+      {/* ── 个人详情模式 ── */}
+      {selectedId && detail ? (
+        <>
+          <StatisticCard.Group direction="row" style={{ marginBottom: 16 }}>
+            <StatisticCard statistic={{ title: '已完成', value: detail.summary.completed, valueStyle: { color: '#52c41a' } }} />
+            <StatisticCard statistic={{ title: '处理中', value: detail.summary.in_progress, valueStyle: { color: '#1890ff' } }} />
+            <StatisticCard statistic={{ title: '待处理', value: detail.summary.pending, valueStyle: { color: '#faad14' } }} />
+            <StatisticCard statistic={{ title: '总工时(h)', value: detail.summary.total_hours, valueStyle: { color: '#722ed1' } }} />
+          </StatisticCard.Group>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}><WeeklyTrend data={detail.weekly_trend} title="近12周完成趋势" /></Col>
+            <Col span={12}><RPie data={detail.type_distribution} title="需求类型分布" height={240} /></Col>
+          </Row>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={24}><TopBar data={detail.org_distribution} title="服务机构 Top 10" color="#722ed1" /></Col>
+          </Row>
+          <ProTable<RequestItem>
+            headerTitle="需求明细"
+            columns={requestDetailCols}
+            request={async (params) => getRequests({ researcher_id: selectedId, current: params.current, pageSize: params.pageSize })}
+            rowKey="id" search={false} pagination={{ pageSize: 10 }} options={false} size="small"
+          />
+        </>
+      ) : (
+        /* ── 总览模式 ── */
+        <>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}>
+              <Card title={`研究员完成件数 (${PERIOD_ITEMS.find(p => p.value === period)?.label})`} size="small">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={barData} margin={{ left: 0, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="完成件数" fill="#1890ff" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            </Col>
+            <Col span={12}>
+              <Card title="研究员任务状态分布" size="small">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={hoursData} margin={{ left: 0, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="已完成" fill="#52c41a" stackId="s" />
+                    <Bar dataKey="处理中" fill="#1890ff" stackId="s" />
+                    <Bar dataKey="待处理" fill="#faad14" stackId="s" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            </Col>
+          </Row>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}><RPie data={charts?.type_distribution || []} title="需求类型分布" height={240} /></Col>
+            <Col span={12}><RPie data={charts?.org_type_distribution || []} title="客户类型分布" height={240} /></Col>
+          </Row>
+          <ProTable
+            headerTitle="研究员完成数矩阵 (按时间维度)"
+            columns={matrixCols('研究员')}
+            dataSource={summary ? [...matrix, summary] : matrix}
+            rowKey="name" search={false} pagination={false} options={false} size="middle"
+            rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
+          />
+        </>
+      )}
     </Spin>
   );
 };
 
-// ─────────────────────────────────────────────────────────
-// Tab 3: 需求类型视角
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// Tab 2: 需求类型视角
+// ═════════════════════════════════════════════════════════
 
 const TypeTab: React.FC = () => {
   const { message } = App.useApp();
@@ -204,6 +262,9 @@ const TypeTab: React.FC = () => {
   const [charts, setCharts] = useState<any>(null);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(false);
+  const [selectedType, setSelectedType] = useState<string | undefined>();
+  const [detail, setDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -213,63 +274,90 @@ const TypeTab: React.FC = () => {
       .finally(() => setLoading(false));
   }, [period]);
 
+  useEffect(() => {
+    if (!selectedType) { setDetail(null); return; }
+    setDetailLoading(true);
+    getTypeDetail(selectedType)
+      .then(setDetail)
+      .catch(() => message.error('获取类型详情失败'))
+      .finally(() => setDetailLoading(false));
+  }, [selectedType]);
+
   const periodKey = period;
   const barData = matrix.map(r => ({ name: r.name, 完成件数: r[periodKey] || 0 })).filter(d => d.完成件数 > 0);
+  const summary = calcSummary(matrix);
 
-  const matrixCols: ProColumns<any>[] = [
-    { title: '需求类型', dataIndex: 'name', fixed: 'left', width: 120 },
-    { title: '今日', dataIndex: 'today', sorter: (a: any, b: any) => a.today - b.today },
-    { title: '本周', dataIndex: 'week', sorter: (a: any, b: any) => a.week - b.week },
-    { title: '本月', dataIndex: 'month', sorter: (a: any, b: any) => a.month - b.month },
-    { title: '当季', dataIndex: 'quarter', sorter: (a: any, b: any) => a.quarter - b.quarter },
-    { title: '今年', dataIndex: 'year', sorter: (a: any, b: any) => a.year - b.year },
-  ];
-
-  const summary = matrix.length ? {
-    name: '合计',
-    ...['today', 'week', 'month', 'quarter', 'year'].reduce((acc: any, k) => {
-      acc[k] = matrix.reduce((s, r) => s + (r[k] || 0), 0); return acc;
-    }, {}),
-  } : null;
+  // 类型选项
+  const typeOptions = matrix.map(r => ({ label: r.name, value: r.name }));
 
   return (
-    <Spin spinning={loading}>
-      <PeriodSelector value={period} onChange={setPeriod} />
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
-          <Card title={`需求类型件数 (${PERIOD_ITEMS.find(p => p.value === period)?.label})`} size="small">
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="完成件数" fill="#1890ff">
-                  {barData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <RPie data={charts?.type_distribution || []} title="需求类型占比" height={260} />
-        </Col>
-      </Row>
-      <ProTable
-        headerTitle="需求类型完成数矩阵"
-        columns={matrixCols}
-        dataSource={summary ? [...matrix, summary] : matrix}
-        rowKey="name"
-        search={false} pagination={false} options={false} size="middle"
-        rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
-      />
+    <Spin spinning={loading || detailLoading}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <PeriodSelector value={period} onChange={setPeriod} />
+        <Select
+          allowClear placeholder="选择需求类型查看详情"
+          style={{ width: 240 }}
+          showSearch optionFilterProp="label"
+          options={typeOptions}
+          value={selectedType}
+          onChange={(v) => setSelectedType(v)}
+        />
+      </Space>
+
+      {selectedType && detail ? (
+        <>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}><WeeklyTrend data={detail.weekly_trend} title={`${selectedType} 近12周完成趋势`} /></Col>
+            <Col span={12}><RPie data={detail.researcher_distribution} title="研究员完成分布" height={240} /></Col>
+          </Row>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={24}><TopBar data={detail.org_distribution} title="机构分布 Top 10" color="#13c2c2" /></Col>
+          </Row>
+          <ProTable<RequestItem>
+            headerTitle={`${selectedType} 需求明细`}
+            columns={requestDetailCols}
+            request={async (params) => getRequests({ request_type: selectedType, status: 'completed', current: params.current, pageSize: params.pageSize })}
+            rowKey="id" search={false} pagination={{ pageSize: 10 }} options={false} size="small"
+          />
+        </>
+      ) : (
+        <>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}>
+              <Card title={`需求类型件数 (${PERIOD_ITEMS.find(p => p.value === period)?.label})`} size="small">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={barData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="完成件数" fill="#1890ff">
+                      {barData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            </Col>
+            <Col span={12}>
+              <RPie data={charts?.type_distribution || []} title="需求类型占比" height={260} />
+            </Col>
+          </Row>
+          <ProTable
+            headerTitle="需求类型完成数矩阵"
+            columns={matrixCols('需求类型')}
+            dataSource={summary ? [...matrix, summary] : matrix}
+            rowKey="name" search={false} pagination={false} options={false} size="middle"
+            rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
+          />
+        </>
+      )}
     </Spin>
   );
 };
 
-// ─────────────────────────────────────────────────────────
-// Tab 4: 客户视角
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// Tab 3: 客户视角
+// ═════════════════════════════════════════════════════════
 
 const OrgTab: React.FC = () => {
   const { message } = App.useApp();
@@ -277,196 +365,241 @@ const OrgTab: React.FC = () => {
   const [charts, setCharts] = useState<any>(null);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState<string | undefined>();
+  const [detail, setDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getOrgMatrix(), getCharts(period)])
+    Promise.all([getOrgMatrix(period), getCharts(period)])
       .then(([d, c]) => { setData(d); setCharts(c); })
       .catch(() => message.error('加载失败'))
       .finally(() => setLoading(false));
   }, [period]);
 
-  // Top 10 机构
+  useEffect(() => {
+    if (!selectedOrg) { setDetail(null); return; }
+    setDetailLoading(true);
+    getOrgDetail(selectedOrg)
+      .then(setDetail)
+      .catch(() => message.error('获取机构详情失败'))
+      .finally(() => setDetailLoading(false));
+  }, [selectedOrg]);
+
   const top10 = [...data].sort((a, b) => b.count - a.count).slice(0, 10);
-  const pieData = top10.map(d => ({ name: d.name, value: d.count }));
+  const orgOptions = data.map(d => ({ label: d.name, value: d.name }));
 
   const cols: ProColumns<any>[] = [
     { title: '机构名称', dataIndex: 'name', fixed: 'left', width: 150 },
     { title: '需求数', dataIndex: 'count', sorter: (a: any, b: any) => a.count - b.count },
     { title: '总工时(h)', dataIndex: 'hours', render: (v: any) => (v ?? 0).toFixed(1), sorter: (a: any, b: any) => a.hours - b.hours },
   ];
-
-  const summary = data.length ? {
+  const summaryRow = data.length ? {
     name: '合计',
     count: data.reduce((s, r) => s + (r.count || 0), 0),
     hours: Math.round(data.reduce((s, r) => s + (r.hours || 0), 0) * 10) / 10,
   } : null;
 
   return (
-    <Spin spinning={loading}>
-      <PeriodSelector value={period} onChange={setPeriod} />
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
-          <Card title="Top 10 机构需求量" size="small">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={top10} layout="vertical" margin={{ left: 80, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" allowDecimals={false} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip />
-                <Bar dataKey="count" name="需求数" fill="#1890ff" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <RPie data={charts?.org_type_distribution || []} title="客户类型占比" height={280} />
-        </Col>
-      </Row>
-      <ProTable
-        headerTitle="全部机构统计"
-        columns={cols}
-        dataSource={summary ? [...data, summary] : data}
-        rowKey="name"
-        search={false} pagination={{ pageSize: 15 }} options={false} size="middle"
-        rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
-      />
+    <Spin spinning={loading || detailLoading}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <PeriodSelector value={period} onChange={setPeriod} />
+        <Select
+          allowClear placeholder="选择机构查看详情"
+          style={{ width: 280 }}
+          showSearch optionFilterProp="label"
+          options={orgOptions}
+          value={selectedOrg}
+          onChange={(v) => setSelectedOrg(v)}
+        />
+      </Space>
+
+      {selectedOrg && detail ? (
+        <>
+          <StatisticCard.Group direction="row" style={{ marginBottom: 16 }}>
+            <StatisticCard statistic={{ title: '总需求数', value: detail.summary.total }} />
+            <StatisticCard statistic={{ title: '已完成', value: detail.summary.completed, valueStyle: { color: '#52c41a' } }} />
+            <StatisticCard statistic={{ title: '处理中', value: detail.summary.in_progress, valueStyle: { color: '#1890ff' } }} />
+            <StatisticCard statistic={{ title: '总工时(h)', value: detail.summary.total_hours, valueStyle: { color: '#722ed1' } }} />
+          </StatisticCard.Group>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}><WeeklyTrend data={detail.weekly_trend} title={`${selectedOrg} 近12周完成趋势`} /></Col>
+            <Col span={12}><RPie data={detail.type_distribution} title="需求类型分布" height={240} /></Col>
+          </Row>
+          <ProTable<RequestItem>
+            headerTitle={`${selectedOrg} 需求明细`}
+            columns={requestDetailCols}
+            request={async (params) => getRequests({ org_name: selectedOrg, current: params.current, pageSize: params.pageSize })}
+            rowKey="id" search={false} pagination={{ pageSize: 10 }} options={false} size="small"
+          />
+        </>
+      ) : (
+        <>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}>
+              <Card title="Top 10 机构需求量" size="small">
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={top10} layout="vertical" margin={{ left: 80, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" allowDecimals={false} />
+                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} />
+                    <Tooltip />
+                    <Bar dataKey="count" name="需求数" fill="#1890ff" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            </Col>
+            <Col span={12}>
+              <RPie data={charts?.org_type_distribution || []} title="客户类型占比" height={280} />
+            </Col>
+          </Row>
+          <ProTable
+            headerTitle="全部机构统计"
+            columns={cols}
+            dataSource={summaryRow ? [...data, summaryRow] : data}
+            rowKey="name" search={false} pagination={{ pageSize: 15 }} options={false} size="middle"
+            rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
+          />
+        </>
+      )}
     </Spin>
   );
 };
 
-// ─────────────────────────────────────────────────────────
-// Tab 5: 销售视角
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// Tab 4: 销售视角
+// ═════════════════════════════════════════════════════════
 
 const SalesTab: React.FC = () => {
   const { message } = App.useApp();
   const [matrix, setMatrix] = useState<any[]>([]);
   const [period, setPeriod] = useState('month');
   const [loading, setLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | undefined>();
+  const [detail, setDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    getSalesMatrix().then(setMatrix).catch(() => message.error('加载失败')).finally(() => setLoading(false));
+    getSalesMatrix()
+      .then(setMatrix)
+      .catch(() => message.error('加载失败'))
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedId) { setDetail(null); return; }
+    setDetailLoading(true);
+    getSalesDetail(selectedId)
+      .then(setDetail)
+      .catch(() => message.error('获取销售详情失败'))
+      .finally(() => setDetailLoading(false));
+  }, [selectedId]);
 
   const periodKey = period;
   const barData = matrix.map(r => ({ name: r.name, 完成件数: r[periodKey] || 0 })).filter(d => d.完成件数 > 0);
+  const summary = calcSummary(matrix);
 
-  const matrixCols: ProColumns<any>[] = [
-    { title: '销售', dataIndex: 'name', fixed: 'left', width: 100 },
-    { title: '今日', dataIndex: 'today', sorter: (a: any, b: any) => a.today - b.today },
-    { title: '本周', dataIndex: 'week', sorter: (a: any, b: any) => a.week - b.week },
-    { title: '本月', dataIndex: 'month', sorter: (a: any, b: any) => a.month - b.month },
-    { title: '当季', dataIndex: 'quarter', sorter: (a: any, b: any) => a.quarter - b.quarter },
-    { title: '今年', dataIndex: 'year', sorter: (a: any, b: any) => a.year - b.year },
-  ];
-
-  const summary = matrix.length ? {
-    name: '合计',
-    ...['today', 'week', 'month', 'quarter', 'year'].reduce((acc: any, k) => {
-      acc[k] = matrix.reduce((s, r) => s + (r[k] || 0), 0); return acc;
-    }, {}),
-  } : null;
+  // 销售选项（matrix_v2 已含 user_id）
+  const salesOptions = matrix.map(r => ({ label: r.name, value: r.user_id }));
 
   return (
-    <Spin spinning={loading}>
-      <PeriodSelector value={period} onChange={setPeriod} />
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={12}>
-          <Card title={`销售提交完成件数 (${PERIOD_ITEMS.find(p => p.value === period)?.label})`} size="small">
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="完成件数" fill="#1890ff">
-                  {barData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <RPie
-            data={barData.map(d => ({ name: d.name, value: d.完成件数 }))}
-            title="销售占比"
-            height={260}
+    <Spin spinning={loading || detailLoading}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <PeriodSelector value={period} onChange={setPeriod} />
+        <Select
+          allowClear placeholder="选择销售查看个人详情"
+          style={{ width: 240 }}
+          showSearch optionFilterProp="label"
+          options={salesOptions}
+          value={selectedId}
+          onChange={(v) => setSelectedId(v)}
+        />
+      </Space>
+
+      {selectedId && detail ? (
+        <>
+          <StatisticCard.Group direction="row" style={{ marginBottom: 16 }}>
+            <StatisticCard statistic={{ title: '总提交数', value: detail.summary.total }} />
+            <StatisticCard statistic={{ title: '已完成', value: detail.summary.completed, valueStyle: { color: '#52c41a' } }} />
+            <StatisticCard statistic={{ title: '待处理', value: detail.summary.pending, valueStyle: { color: '#faad14' } }} />
+            <StatisticCard statistic={{ title: '退回数', value: detail.summary.withdrawn, valueStyle: { color: '#f5222d' } }} />
+          </StatisticCard.Group>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}><WeeklyTrend data={detail.weekly_trend} title="近12周提交完成趋势" /></Col>
+            <Col span={12}><RPie data={detail.type_distribution} title="需求类型分布" height={240} /></Col>
+          </Row>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={24}><TopBar data={detail.org_distribution} title="客户（机构）Top 10" color="#eb2f96" /></Col>
+          </Row>
+          <ProTable<RequestItem>
+            headerTitle="需求明细"
+            columns={requestDetailCols}
+            request={async (params) => getRequests({ sales_id: selectedId, current: params.current, pageSize: params.pageSize })}
+            rowKey="id" search={false} pagination={{ pageSize: 10 }} options={false} size="small"
           />
-        </Col>
-      </Row>
-      <ProTable
-        headerTitle="销售提交完成数矩阵"
-        columns={matrixCols}
-        dataSource={summary ? [...matrix, summary] : matrix}
-        rowKey="name"
-        search={false} pagination={false} options={false} size="middle"
-        rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
-      />
+        </>
+      ) : (
+        <>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={12}>
+              <Card title={`销售提交完成件数 (${PERIOD_ITEMS.find(p => p.value === period)?.label})`} size="small">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={barData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="完成件数" fill="#1890ff">
+                      {barData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            </Col>
+            <Col span={12}>
+              <RPie
+                data={barData.map(d => ({ name: d.name, value: d.完成件数 }))}
+                title="销售占比"
+                height={260}
+              />
+            </Col>
+          </Row>
+          <ProTable
+            headerTitle="销售提交完成数矩阵"
+            columns={matrixCols('销售')}
+            dataSource={summary ? [...matrix, summary] : matrix}
+            rowKey="name" search={false} pagination={false} options={false} size="middle"
+            rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
+          />
+        </>
+      )}
     </Spin>
   );
 };
 
-// ─────────────────────────────────────────────────────────
-// Tab 6: 下载统计 (带筛选 + 图表)
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// Tab 5: 下载统计（保持不变）
+// ═════════════════════════════════════════════════════════
 
 const DownloadsTab: React.FC = () => {
   const { message } = App.useApp();
-  const [data, setData] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [userFilter, setUserFilter] = useState<string>('');
-  const [orgFilter, setOrgFilter] = useState<string>('');
+  const [userFilter, setUserFilter] = useState('');
+  const [orgFilter, setOrgFilter] = useState('');
 
   useEffect(() => {
     setLoading(true);
-    getDownloadStats().then(setData).catch(() => message.error('获取下载统计失败')).finally(() => setLoading(false));
+    getDownloadStats().then(setStats).catch(() => message.error('加载失败')).finally(() => setLoading(false));
   }, []);
 
-  // 过滤近期记录
-  const filteredLogs = useMemo(() => {
-    if (!data?.recent_logs) return [];
-    return data.recent_logs.filter((log: any) => {
-      if (userFilter && !log.user_name?.includes(userFilter)) return false;
-      if (orgFilter && orgFilter !== '__none__' && log.org_name !== orgFilter) return false;
-      if (orgFilter === '__none__' && log.org_name) return false;
-      return true;
-    });
-  }, [data, userFilter, orgFilter]);
-
-  // 机构下载分布图 (从近期记录聚合)
-  const orgDistribution = useMemo(() => {
-    if (!data?.recent_logs) return [];
-    const map: Record<string, number> = {};
-    data.recent_logs.forEach((log: any) => {
-      const key = log.org_name || '(无关联机构)';
-      map[key] = (map[key] || 0) + 1;
-    });
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
-  }, [data]);
-
-  // 唯一用户 & 机构列表 (for filter options)
-  const userOptions = useMemo(() => {
-    if (!data?.recent_logs) return [];
-    return [...new Set(data.recent_logs.map((l: any) => l.user_name).filter(Boolean))];
-  }, [data]);
-
-  const orgOptions = useMemo(() => {
-    if (!data?.recent_logs) return [];
-    return [...new Set(data.recent_logs.map((l: any) => l.org_name).filter(Boolean))];
-  }, [data]);
-
-  const topColumns: ProColumns<any>[] = [
-    { title: '排名', valueType: 'index', width: 60 },
-    { title: '需求标题', dataIndex: 'title', ellipsis: true },
+  const topCols: ProColumns<any>[] = [
+    { title: '排名', valueType: 'index', width: 60, render: (_, __, i) => <strong>{i + 1}</strong> },
+    { title: '标题', dataIndex: 'title', ellipsis: true },
     { title: '下载次数', dataIndex: 'total_count', sorter: (a: any, b: any) => a.total_count - b.total_count },
-    { title: '独立用户数', dataIndex: 'unique_users' },
+    { title: '独立用户', dataIndex: 'unique_users' },
   ];
-
   const logColumns: ProColumns<any>[] = [
     { title: '需求标题', dataIndex: 'request_title', ellipsis: true },
     { title: '下载人', dataIndex: 'user_name' },
@@ -474,39 +607,26 @@ const DownloadsTab: React.FC = () => {
     { title: '下载时间', dataIndex: 'downloaded_at', valueType: 'dateTime' },
   ];
 
+  const logs = stats?.recent_logs || [];
+  const userOptions = [...new Set<string>(logs.map((l: any) => l.user_name).filter(Boolean))];
+  const orgOptions = [...new Set<string>(logs.map((l: any) => l.org_name).filter(Boolean))];
+
+  const filteredLogs = logs.filter((l: any) => {
+    if (userFilter && l.user_name !== userFilter) return false;
+    if (orgFilter === '__none__' && l.org_name) return false;
+    if (orgFilter && orgFilter !== '__none__' && l.org_name !== orgFilter) return false;
+    return true;
+  });
+
   return (
     <Spin spinning={loading}>
-      {/* Top 10 + 机构分布图 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={14}>
-          <Card title="Top 10 热门下载" size="small">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={data?.top_downloads?.slice(0, 10) || []} layout="vertical" margin={{ left: 100, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" allowDecimals={false} />
-                <YAxis dataKey="title" type="category" tick={{ fontSize: 11 }} width={100} />
-                <Tooltip />
-                <Bar dataKey="total_count" name="下载次数" fill="#1890ff" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        </Col>
-        <Col span={10}>
-          <RPie data={orgDistribution} title="关联机构下载分布" height={280} />
-        </Col>
-      </Row>
-
-      {/* Top 10 表格 */}
       <ProTable
         headerTitle="Top 10 下载排行"
-        columns={topColumns}
-        dataSource={data?.top_downloads || []}
-        rowKey="request_id"
-        search={false} pagination={false} options={false} size="middle"
+        columns={topCols}
+        dataSource={stats?.top_downloads || []}
+        rowKey="request_id" search={false} pagination={false} options={false} size="middle"
         style={{ marginBottom: 24 }}
       />
-
-      {/* 筛选条 */}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap>
           <span>筛选：</span>
@@ -527,28 +647,23 @@ const DownloadsTab: React.FC = () => {
           />
         </Space>
       </Card>
-
       <ProTable
         headerTitle={`近期下载记录 (${filteredLogs.length} 条)`}
         columns={logColumns}
         dataSource={filteredLogs}
         rowKey={(_, i) => `log-${i}`}
-        search={false}
-        pagination={{ pageSize: 15 }}
-        options={false}
-        size="middle"
+        search={false} pagination={{ pageSize: 15 }} options={false} size="middle"
       />
     </Spin>
   );
 };
 
-// ─────────────────────────────────────────────────────────
-// 主页面
-// ─────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════
+// 主页面 — 删除了统计看板 Tab，4+1 结构
+// ═════════════════════════════════════════════════════════
 
 const Analytics: React.FC = () => {
   const items = [
-    { key: 'charts', label: '统计看板', children: <ChartsTab /> },
     { key: 'researcher', label: '研究员视角', children: <ResearcherTab /> },
     { key: 'type', label: '需求类型视角', children: <TypeTab /> },
     { key: 'org', label: '客户视角', children: <OrgTab /> },

@@ -17,16 +17,32 @@ export async function getResearcherMatrix() {
   return request<any[]>('/api/v1/stats/researcher-matrix');
 }
 
+export async function getResearcherDetail(userId: number) {
+  return request<any>('/api/v1/stats/researcher-detail', { params: { user_id: userId } });
+}
+
 export async function getTypeMatrix() {
   return request<any[]>('/api/v1/stats/type-matrix');
 }
 
-export async function getOrgMatrix() {
-  return request<any[]>('/api/v1/stats/org-matrix');
+export async function getTypeDetail(requestType: string) {
+  return request<any>('/api/v1/stats/type-detail', { params: { request_type: requestType } });
+}
+
+export async function getOrgMatrix(period: string = 'year') {
+  return request<any[]>('/api/v1/stats/org-matrix', { params: { period } });
+}
+
+export async function getOrgDetail(orgName: string) {
+  return request<any>('/api/v1/stats/org-detail', { params: { org_name: orgName } });
 }
 
 export async function getSalesMatrix() {
   return request<any[]>('/api/v1/stats/sales-matrix');
+}
+
+export async function getSalesDetail(userId: number) {
+  return request<any>('/api/v1/stats/sales-detail', { params: { user_id: userId } });
 }
 
 export async function getCharts(period: string = 'month') {
@@ -98,44 +114,55 @@ export async function deleteTeam(id: number) {
   return request(`/api/v1/teams/${id}`, { method: 'DELETE' });
 }
 
-export async function getTeamOrganizations(teamId: number) {
-  return request<any[]>(`/api/v1/teams/${teamId}/organizations`);
+export async function getTeamOrganizations(id: number) {
+  return request<any[]>(`/api/v1/teams/${id}/organizations`);
 }
 
-export async function updateTeamOrganizations(teamId: number, org_ids: number[]) {
-  return request(`/api/v1/teams/${teamId}/organizations`, { method: 'PUT', data: { org_ids } });
+export async function updateTeamOrganizations(id: number, org_ids: number[]) {
+  return request(`/api/v1/teams/${id}/organizations`, { method: 'PUT', data: { org_ids } });
 }
 
-export async function updateTeamMembers(teamId: number, user_ids: number[]) {
-  return request(`/api/v1/teams/${teamId}/members`, { method: 'PUT', data: { user_ids } });
+export async function updateTeamMembers(id: number, user_ids: number[]) {
+  return request(`/api/v1/teams/${id}/members`, { method: 'PUT', data: { user_ids } });
 }
 
-// ─── Requests (admin scope) ───
+// ─── Export ───
+
+export async function getExportPreview(params: RequestListParams) {
+  return request<{ items: any[]; total: number }>('/api/v1/exports/requests/preview', { params });
+}
+
+export function getExportUrl(params: Record<string, any>) {
+  const qs = new URLSearchParams(params).toString();
+  return `/api/v1/exports/requests?${qs}`;
+}
+
+// ─── Requests Management ───
 
 export async function deleteRequest(id: number) {
   return request(`/api/v1/requests/${id}`, { method: 'DELETE' });
 }
 
-export async function reassignRequest(id: number, researcher_id: number) {
-  return request(`/api/v1/requests/${id}/reassign`, { method: 'PUT', data: { researcher_id } });
-}
-
 export async function toggleConfidential(id: number, is_confidential: boolean) {
-  return request(`/api/v1/requests/${id}/confidential`, { method: 'PUT', data: { is_confidential } });
+  return request(`/api/v1/requests/${id}`, { method: 'PUT', data: { is_confidential } });
 }
 
-// ─── Export (admin preview) ───
-
-export async function getExportPreview(params: RequestListParams) {
-  return request<{ items: any[]; total: number }>('/api/v1/exports/requests/preview', {
-    params: { ...params, page: params.current, page_size: params.pageSize },
-  });
-}
+// ─── Export ─── (full Excel download)
 
 export async function exportFullExcel(params: Record<string, any>) {
-  return request('/api/v1/exports/requests', {
-    method: 'GET',
-    params,
-    responseType: 'blob',
+  const token = localStorage.getItem('token');
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== undefined && v !== null && v !== '')),
+  ).toString();
+  const resp = await fetch(`/api/v1/exports/requests?${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
+  if (!resp.ok) throw new Error('导出失败');
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `需求导出_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }

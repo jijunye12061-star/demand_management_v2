@@ -263,3 +263,186 @@ def get_downloads(db: Session) -> dict:
             for r in recent
         ],
     }
+
+
+# ── 以下内容追加到 server/app/services/stats_service.py 末尾 ──
+
+# ─── Weekly trend helper ──────────────────────────────────────────────────────
+
+def _weekly_trend(db: Session, filters: list) -> list[dict]:
+    """近 12 周每周完成件数。filters 为额外的 .filter() 条件列表。"""
+    now = datetime.now(BJT)
+    start = (now - timedelta(weeks=12)).strftime("%Y-%m-%d %H:%M:%S")
+    q = (
+        db.query(
+            func.strftime("%Y-W%W", Request.completed_at).label("week"),
+            func.count(Request.id).label("count"),
+        )
+        .filter(Request.status == "completed", Request.completed_at >= start)
+    )
+    for f in filters:
+        q = q.filter(f)
+    rows = q.group_by("week").order_by("week").all()
+    return [{"week": r.week, "count": r.count} for r in rows]
+
+
+# ─── Researcher detail ────────────────────────────────────────────────────────
+
+def get_researcher_detail(db: Session, user_id: int) -> dict:
+    base = Request.researcher_id == user_id
+    summary = db.query(
+        func.sum(case((Request.status == "completed", 1), else_=0)).label("completed"),
+        func.sum(case((Request.status == "in_progress", 1), else_=0)).label("in_progress"),
+        func.sum(case((Request.status == "pending", 1), else_=0)).label("pending"),
+        func.coalesce(func.sum(case((Request.status == "completed", Request.work_hours), else_=0)), 0).label("total_hours"),
+    ).filter(base).first()
+
+    type_dist = (
+        db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
+        .filter(base, Request.status == "completed")
+        .group_by(Request.request_type).all()
+    )
+    org_dist = (
+        db.query(func.coalesce(Request.org_name, "未知").label("name"), func.count(Request.id).label("value"))
+        .filter(base, Request.status == "completed")
+        .group_by(Request.org_name)
+        .order_by(text("value DESC")).limit(10).all()
+    )
+    return {
+        "summary": {
+            "completed": summary.completed or 0,
+            "in_progress": summary.in_progress or 0,
+            "pending": summary.pending or 0,
+            "total_hours": round(summary.total_hours or 0, 1),
+        },
+        "weekly_trend": _weekly_trend(db, [base]),
+        "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
+        "org_distribution": [{"name": r.name, "value": r.value} for r in org_dist],
+    }
+
+
+# ─── Type detail ──────────────────────────────────────────────────────────────
+
+def get_type_detail(db: Session, request_type: str) -> dict:
+    base = Request.request_type == request_type
+    org_dist = (
+        db.query(func.coalesce(Request.org_name, "未知").label("name"), func.count(Request.id).label("value"))
+        .filter(base, Request.status == "completed")
+        .group_by(Request.org_name)
+        .order_by(text("value DESC")).limit(10).all()
+    )
+    researcher_dist = (
+        db.query(User.display_name.label("name"), func.count(Request.id).label("value"))
+        .join(Request, Request.researcher_id == User.id)
+        .filter(base, Request.status == "completed")
+        .group_by(User.id)
+        .order_by(text("value DESC")).all()
+    )
+    return {
+        "weekly_trend": _weekly_trend(db, [base]),
+        "org_distribution": [{"name": r.name, "value": r.value} for r in org_dist],
+        "researcher_distribution": [{"name": r.name, "value": r.value} for r in researcher_dist],
+    }
+
+
+# ─── Org detail ───────────────────────────────────────────────────────────────
+
+def get_org_detail(db: Session, org_name: str) -> dict:
+    base = Request.org_name == org_name
+    summary = db.query(
+        func.count(Request.id).label("total"),
+        func.sum(case((Request.status == "completed", 1), else_=0)).label("completed"),
+        func.sum(case((Request.status == "in_progress", 1), else_=0)).label("in_progress"),
+        func.coalesce(func.sum(case((Request.status == "completed", Request.work_hours), else_=0)), 0).label("total_hours"),
+    ).filter(base).first()
+
+    type_dist = (
+        db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
+        .filter(base, Request.status == "completed")
+        .group_by(Request.request_type).all()
+    )
+    return {
+        "summary": {
+            "total": summary.total or 0,
+            "completed": summary.completed or 0,
+            "in_progress": summary.in_progress or 0,
+            "total_hours": round(summary.total_hours or 0, 1),
+        },
+        "weekly_trend": _weekly_trend(db, [base]),
+        "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
+    }
+
+
+# ─── Sales detail ─────────────────────────────────────────────────────────────
+
+def get_sales_detail(db: Session, user_id: int) -> dict:
+    base = Request.sales_id == user_id
+    summary = db.query(
+        func.count(Request.id).label("total"),
+        func.sum(case((Request.status == "completed", 1), else_=0)).label("completed"),
+        func.sum(case((Request.status == "pending", 1), else_=0)).label("pending"),
+        func.sum(case((Request.status == "withdrawn", 1), else_=0)).label("withdrawn"),
+    ).filter(base).first()
+
+    type_dist = (
+        db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
+        .filter(base, Request.status == "completed")
+        .group_by(Request.request_type).all()
+    )
+    org_dist = (
+        db.query(func.coalesce(Request.org_name, "未知").label("name"), func.count(Request.id).label("value"))
+        .filter(base, Request.status == "completed")
+        .group_by(Request.org_name)
+        .order_by(text("value DESC")).limit(10).all()
+    )
+    return {
+        "summary": {
+            "total": summary.total or 0,
+            "completed": summary.completed or 0,
+            "pending": summary.pending or 0,
+            "withdrawn": summary.withdrawn or 0,
+        },
+        "weekly_trend": _weekly_trend(db, [base]),
+        "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
+        "org_distribution": [{"name": r.name, "value": r.value} for r in org_dist],
+    }
+
+
+# ─── Modified: org_matrix 增加 period 过滤 ───────────────────────────────────
+
+def get_org_matrix_v2(db: Session, period: str = "year") -> list[dict]:
+    """带 period 过滤的客户矩阵，替代原 get_org_matrix。"""
+    start = _period_start(period)
+    rows = (
+        db.query(
+            func.coalesce(Request.org_name, "未知").label("name"),
+            func.count(Request.id).label("count"),
+            func.coalesce(func.sum(Request.work_hours), 0).label("hours"),
+        )
+        .filter(Request.status == "completed", Request.completed_at >= start)
+        .group_by(Request.org_name)
+        .order_by(text("count DESC"))
+        .all()
+    )
+    return [{"name": r.name, "count": r.count, "hours": round(r.hours, 1)} for r in rows]
+
+
+# ─── Modified: sales_matrix 补充 user_id ──────────────────────────────────────
+
+def get_sales_matrix_v2(db: Session) -> list[dict]:
+    """在原 sales_matrix 基础上增加 user_id 字段。"""
+    rows = (
+        db.query(User.id.label("user_id"), User.display_name.label("name"), *_build_period_columns())
+        .join(Request, Request.sales_id == User.id)
+        .filter(Request.status == "completed")
+        .group_by(User.id)
+        .all()
+    )
+    result = []
+    for r in rows:
+        d = {"user_id": r.user_id, "name": r.name,
+             "today": r.today or 0, "week": r.week or 0,
+             "month": r.month or 0, "quarter": r.quarter or 0, "year": r.year or 0}
+        if any([d["today"], d["week"], d["month"], d["quarter"], d["year"]]):
+            result.append(d)
+    return result
