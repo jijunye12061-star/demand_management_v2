@@ -150,7 +150,7 @@ export async function toggleConfidential(id: number, is_confidential: boolean) {
 // ─── Export ─── (full Excel download)
 
 export async function exportFullExcel(params: Record<string, any>) {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('access_token');  // FIX: was 'token', should be 'access_token'
   const qs = new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== undefined && v !== null && v !== '')),
   ).toString();

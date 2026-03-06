@@ -6,6 +6,7 @@ import { DownloadOutlined } from '@ant-design/icons';
 import { getExportPreview, exportFullExcel } from '@/services/admin';
 import { getResearchers, getSales } from '@/services/api';
 import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS } from '@/utils/constants';
+import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 
 const Export: React.FC = () => {
   const { message } = App.useApp();
@@ -13,18 +14,15 @@ const Export: React.FC = () => {
   const [filterParams, setFilterParams] = useState<Record<string, any>>({});
   const [exporting, setExporting] = useState(false);
 
+  // 详情抽屉
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [currentRow, setCurrentRow] = useState<any>(null);
+
   const handleExport = async () => {
     try {
       setExporting(true);
-      const blob = await exportFullExcel(filterParams);
-      const url = window.URL.createObjectURL(new Blob([blob]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `需求数据导出_${Date.now()}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      // exportFullExcel 内部已完成下载，无需再处理 blob
+      await exportFullExcel(filterParams);
       message.success('导出成功');
     } catch {
       message.error('导出失败');
@@ -34,44 +32,52 @@ const Export: React.FC = () => {
   };
 
   const columns: ProColumns<any>[] = [
-    { title: '标题', dataIndex: 'title', ellipsis: true },
-    { title: '需求类型', dataIndex: 'request_type', width: 100 },
-    { title: '研究范围', dataIndex: 'research_scope', width: 90 },
-    { title: '机构', dataIndex: 'org_name', ellipsis: true, width: 120 },
-    { title: '机构类型', dataIndex: 'org_type', width: 80 },
-    { title: '部门', dataIndex: 'department', width: 80 },
-    { title: '销售', dataIndex: 'sales_name', width: 80 },
-    { title: '研究员', dataIndex: 'researcher_name', width: 80 },
     {
-      title: '状态', dataIndex: 'status', width: 80,
+      title: '标题',
+      dataIndex: 'title',
+      ellipsis: true,
+      render: (dom, entity) => (
+        <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>{dom}</a>
+      ),
+    },
+    { title: '需求描述', dataIndex: 'description', ellipsis: true },
+    { title: '需求类型', dataIndex: 'request_type', width: 100 },
+    { title: '研究范围', dataIndex: 'research_scope', width: 100 },
+    { title: '机构名称', dataIndex: 'org_name', width: 120, ellipsis: true },
+    { title: '机构类型', dataIndex: 'org_type', width: 80 },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
       render: (_, r) => {
         const cfg = STATUS_ENUM[r.status];
         return <Tag color={cfg?.status?.toLowerCase()}>{cfg?.text || r.status}</Tag>;
       },
     },
-    { title: '工时', dataIndex: 'work_hours', width: 60 },
-    { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 150 },
-    { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', width: 150 },
+    { title: '研究员', dataIndex: 'researcher_name', width: 100 },
+    { title: '销售', dataIndex: 'sales_name', width: 100 },
+    { title: '工时', dataIndex: 'work_hours', width: 70 },
+    { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 160 },
+    { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', width: 160 },
   ];
 
   return (
-    <PageContainer>
-      {/* 筛选区 */}
+    <PageContainer title="数据导出">
       <QueryFilter
-        style={{ marginBottom: 16 }}
+        defaultCollapsed={false}
         onFinish={async (values) => {
-          const params: Record<string, any> = { ...values };
+          const p: Record<string, any> = { ...values };
           if (values.dateRange) {
-            params.date_from = values.dateRange[0];
-            params.date_to = values.dateRange[1];
-            delete params.dateRange;
+            p.date_from = values.dateRange[0];
+            p.date_to = values.dateRange[1];
+            delete p.dateRange;
           }
-          setFilterParams(params);
+          setFilterParams(p);
           actionRef.current?.reload();
         }}
         onReset={() => { setFilterParams({}); actionRef.current?.reload(); }}
       >
-        <ProFormSelect name="status" label="状态" options={Object.entries(STATUS_ENUM).map(([k, v]) => ({ label: v.text, value: k }))} />
+        <ProFormSelect name="status" label="状态" valueEnum={STATUS_ENUM} />
         <ProFormSelect name="request_type" label="需求类型" options={REQUEST_TYPE_OPTIONS} />
         <ProFormSelect name="research_scope" label="研究范围" options={RESEARCH_SCOPE_OPTIONS} />
         <ProFormSelect
@@ -112,7 +118,15 @@ const Export: React.FC = () => {
         }}
         pagination={{ pageSize: 20 }}
         size="middle"
-        scroll={{ x: 1200 }}
+        scroll={{ x: 1400 }}
+      />
+
+      {/* 需求详情抽屉 */}
+      <RequestDetailDrawer
+        open={drawerVisible}
+        onClose={() => { setDrawerVisible(false); setCurrentRow(null); }}
+        request={currentRow}
+        downloadMode="admin"
       />
     </PageContainer>
   );

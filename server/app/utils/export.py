@@ -2,7 +2,6 @@ import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 
-
 HEADER_FILL = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 
@@ -10,6 +9,7 @@ HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 FULL_COLUMNS = [
     ("ID", "id", 8),
     ("标题", "title", 30),
+    ("需求描述", "description", 40),
     ("需求类型", "request_type", 14),
     ("研究范畴", "research_scope", 12),
     ("机构", "org_name", 18),
@@ -43,9 +43,6 @@ STATUS_MAP = {
     "withdrawn": "已退回",
     "canceled": "已取消",
 }
-
-# 兼容旧调用
-COLUMNS = FULL_COLUMNS
 
 
 def generate_excel(items: list[dict], columns: list[tuple] | None = None) -> io.BytesIO:
