@@ -1,6 +1,4 @@
 import shutil
-from pathlib import Path
-
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, status
 
 from app.core.config import settings
@@ -13,6 +11,7 @@ from app.schemas.request import (
 from app.services.request_service import (
     query_requests, accept_request, complete_request,
     withdraw_request, resubmit_request, cancel_request,
+    reopen_request, revoke_accept
 )
 from app.utils.datetime_utils import now_beijing
 
@@ -214,4 +213,24 @@ def toggle_confidential(request_id: int, body: ConfidentialRequest, db: DB, admi
     req.is_confidential = 1 if body.is_confidential else 0
     req.updated_at = now_beijing()
     db.commit()
+    return {"message": "ok"}
+
+
+@router.post("/{request_id}/reopen")
+def reopen(request_id: int, db: DB, user: CurrentUser):
+    """研究员撤销完成: completed → in_progress"""
+    try:
+        reopen_request(db, request_id, user)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    return {"message": "ok"}
+
+
+@router.post("/{request_id}/revoke-accept")
+def revoke(request_id: int, db: DB, user: CurrentUser):
+    """研究员撤销接受: in_progress → pending"""
+    try:
+        revoke_accept(db, request_id, user)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     return {"message": "ok"}

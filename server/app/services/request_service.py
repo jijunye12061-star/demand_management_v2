@@ -218,3 +218,39 @@ def cancel_request(db: Session, request_id: int, user: User) -> Request:
     db.commit()
     db.refresh(req)
     return req
+
+def reopen_request(db: "Session", request_id: int, user: "User") -> "Request":
+    """已完成 → 处理中：研究员撤销完成，重新处理"""
+    req = db.get(Request, request_id)
+    if not req:
+        raise ValueError("需求不存在")
+    if req.status != "completed":
+        raise ValueError("仅已完成的需求可以撤销")
+    if req.researcher_id != user.id:
+        raise ValueError("仅负责研究员可以撤销完成")
+    req.status = "in_progress"
+    req.completed_at = None
+    req.result_note = None
+    req.work_hours = None
+    # 保留附件不删，清空路径（文件留存用于审计）
+    req.attachment_path = None
+    req.updated_at = now_beijing()
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+def revoke_accept(db: "Session", request_id: int, user: "User") -> "Request":
+    """处理中 → 待处理：研究员撤销接受，退回待处理状态"""
+    req = db.get(Request, request_id)
+    if not req:
+        raise ValueError("需求不存在")
+    if req.status != "in_progress":
+        raise ValueError("仅处理中的需求可以撤销接受")
+    if req.researcher_id != user.id:
+        raise ValueError("仅负责研究员可以撤销接受")
+    req.status = "pending"
+    req.updated_at = now_beijing()
+    db.commit()
+    db.refresh(req)
+    return req

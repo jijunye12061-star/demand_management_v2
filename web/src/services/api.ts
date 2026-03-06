@@ -2,10 +2,10 @@ import { request } from '@umijs/max';
 import type { Organization, Researcher, SalesUser, RequestItem, RequestListParams } from './typings';
 
 // --- Organizations ---
-export async function getOrganizations(team_id?: number) {
+export async function getOrganizations(team_id?: number, load_all?: boolean) {
   return request<Organization[]>('/api/v1/organizations/by-team', {
     method: 'GET',
-    params: { team_id },
+    params: { team_id, load_all: load_all || undefined },
   });
 }
 
@@ -118,5 +118,19 @@ export async function downloadAttachment(requestId: number, org_name?: string) {
     method: 'GET',
     params: org_name ? { org_name } : undefined,
     responseType: 'blob',
+  });
+}
+
+// ── 新增：研究员撤销完成 (completed → in_progress) ──
+export async function reopenRequest(id: number) {
+  return request(`/api/v1/requests/${id}/reopen`, {
+    method: 'POST',
+  });
+}
+
+// ── 新增：研究员撤销接受 (in_progress → pending) ──
+export async function revokeAcceptRequest(id: number) {
+  return request(`/api/v1/requests/${id}/revoke-accept`, {
+    method: 'POST',
   });
 }

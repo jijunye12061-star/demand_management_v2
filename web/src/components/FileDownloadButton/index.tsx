@@ -1,20 +1,36 @@
 import React, { useState } from 'react';
 import { Button, message, Modal, Select } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
-import { downloadAttachment, getMineOrgs } from '@/services/api';
+import { getMineOrgs } from '@/services/api';
+import { request } from '@umijs/max';
 
 interface FileDownloadButtonProps {
   requestId: number;
+  /** 仅作兜底，优先取后端返回的真实文件名 */
   fileName?: string;
   size?: 'large' | 'middle' | 'small';
   type?: 'primary' | 'default' | 'dashed' | 'link' | 'text';
-  /** mine=直接下载, feed=弹窗选机构(销售), researcher-feed=固定"内部学习" */
   mode?: 'mine' | 'feed' | 'researcher-feed';
+}
+
+/** 从 Content-Disposition 提取文件名 */
+function extractFilename(disposition: string | null, fallback: string): string {
+  if (!disposition) return fallback;
+  // 优先 filename*=UTF-8''xxx 编码格式
+  const utf8Match = disposition.match(/filename\*=UTF-8''(.+)/i);
+  if (utf8Match) return decodeURIComponent(utf8Match[1]);
+  // 次选 filename="xxx"
+  const quoted = disposition.match(/filename="(.+?)"/i);
+  if (quoted) return quoted[1];
+  // 无引号
+  const plain = disposition.match(/filename=([^\s;]+)/i);
+  if (plain) return plain[1];
+  return fallback;
 }
 
 const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
   requestId,
-  fileName = '附件.pdf',
+  fileName = '附件',
   size = 'middle',
   type = 'link',
   mode = 'mine',
@@ -28,12 +44,36 @@ const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
   const triggerDownload = async (targetOrgName?: string) => {
     try {
       setLoading(true);
-      const blob = await downloadAttachment(requestId, targetOrgName);
 
-      const url = window.URL.createObjectURL(new Blob([blob]));
+      // 用原生 fetch 以访问 response headers
+      const params = new URLSearchParams();
+      if (targetOrgName) params.set('org_name', targetOrgName);
+      const token = localStorage.getItem('access_token');
+      const resp = await fetch(
+        `/api/v1/files/download/${requestId}${params.toString() ? '?' + params.toString() : ''}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+
+      if (!resp.ok) {
+        if (resp.status === 403) {
+          message.error('权限不足：您无法下载该需求附件');
+        } else {
+          message.error('文件下载失败，请稍后重试');
+        }
+        return;
+      }
+
+      const blob = await resp.blob();
+      // 从 header 提取真实文件名
+      const realName = extractFilename(
+        resp.headers.get('Content-Disposition'),
+        fileName,
+      );
+
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', fileName);
+      link.setAttribute('download', realName);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
@@ -41,12 +81,8 @@ const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
 
       message.success('下载成功');
       setModalVisible(false);
-    } catch (error: any) {
-      if (error.response?.status === 403 || error.data?.code === 40300) {
-        message.error('权限不足：您无法下载该需求附件');
-      } else {
-        message.error('文件下载失败，请稍后重试');
-      }
+    } catch {
+      message.error('文件下载失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -56,7 +92,6 @@ const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
     if (mode === 'mine') {
       triggerDownload();
     } else if (mode === 'researcher-feed') {
-      // 研究端 feed：固定"内部学习"，直接下载
       triggerDownload('内部学习');
     } else {
       // 销售端 feed：弹窗选机构
@@ -64,9 +99,9 @@ const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
       setFetchingOrgs(true);
       try {
         const data = await getMineOrgs();
-        setOrgs(Array.isArray(data) ? data.map((o) => ({ id: o.id, name: o.name })) : []);
+        setOrgs(Array.isArray(data) ? data : []);
       } catch {
-        message.error('获取名下机构失败');
+        message.error('加载机构列表失败');
       } finally {
         setFetchingOrgs(false);
       }
@@ -75,37 +110,41 @@ const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
 
   return (
     <>
-      <Button type={type} size={size} icon={<DownloadOutlined />} loading={loading} onClick={handleClick}>
+      <Button
+        type={type}
+        size={size}
+        icon={<DownloadOutlined />}
+        loading={loading}
+        onClick={handleClick}
+      >
         下载附件
       </Button>
 
       <Modal
         title="选择关联机构"
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setSelectedOrg(undefined); }}
+        onCancel={() => setModalVisible(false)}
         onOk={() => {
           if (!selectedOrg) {
-            message.warning('请先选择一个机构');
+            message.warning('请选择关联机构');
             return;
           }
           triggerDownload(selectedOrg);
         }}
         confirmLoading={loading}
-        okText="确认并下载"
         destroyOnClose
       >
-        <div style={{ padding: '20px 0' }}>
-          <p style={{ marginBottom: 12, color: '#666' }}>
-            下载该公开研究报告需要关联您名下的一家机构，以便记录服务转化：
-          </p>
-          <Select
-            style={{ width: '100%' }}
-            placeholder="请选择您名下的机构"
-            loading={fetchingOrgs}
-            options={orgs.map((org) => ({ label: org.name, value: org.name }))}
-            onChange={(val) => setSelectedOrg(val)}
-          />
-        </div>
+        <p style={{ marginBottom: 12 }}>请选择此次下载关联的机构（用于追踪）：</p>
+        <Select
+          style={{ width: '100%' }}
+          placeholder="请选择机构"
+          loading={fetchingOrgs}
+          value={selectedOrg}
+          onChange={setSelectedOrg}
+          showSearch
+          optionFilterProp="label"
+          options={orgs.map((o) => ({ label: o.name, value: o.name }))}
+        />
       </Modal>
     </>
   );

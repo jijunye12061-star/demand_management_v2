@@ -1,3 +1,7 @@
+"""
+server/app/api/organizations.py
+完整替换
+"""
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
@@ -20,7 +24,15 @@ def list_organizations(db: DB, admin: AdminUser, team_id: int | None = None):
 
 
 @router.get("/by-team", response_model=list[OrgResponse])
-def list_orgs_by_user_team(db: DB, user: CurrentUser, team_id: int | None = None):
+def list_orgs_by_user_team(
+    db: DB, user: CurrentUser,
+    team_id: int | None = None,
+    load_all: bool = False,
+):
+    # load_all=true: 研究员代提时选了 admin 作为销售，需要加载全部机构
+    if load_all:
+        return db.execute(select(Organization).order_by(Organization.name)).scalars().all()
+
     tid = team_id or user.team_id
     if not tid:
         # admin 无 team_id 时返回全部

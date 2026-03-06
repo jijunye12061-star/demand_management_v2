@@ -1,5 +1,5 @@
 import shutil
-from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, status
 from fastapi.responses import FileResponse
@@ -39,7 +39,13 @@ def download_file(
     # 记录下载日志: org_name 直接透传, 研究员/admin 不传则为 null
     log_download(db, request_id, user.id, org_name=org_name)
 
-    return FileResponse(path, filename=path.name, media_type="application/octet-stream")
+    # RFC 5987: filename 给 ASCII 兜底, filename* 给 UTF-8 真实名
+    encoded_name = quote(path.name)
+    response = FileResponse(path, media_type="application/octet-stream")
+    response.headers["Content-Disposition"] = (
+        f"attachment; filename=\"{encoded_name}\"; filename*=UTF-8''{encoded_name}"
+    )
+    return response
 
 
 @router.post("/upload")

@@ -18,7 +18,14 @@ import {
 } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
-import { getRequests, acceptRequest, completeRequest, withdrawRequest } from '@/services/api';
+import {
+  getRequests,
+  acceptRequest,
+  completeRequest,
+  withdrawRequest,
+  reopenRequest,
+  revokeAcceptRequest,
+} from '@/services/api';
 import type { RequestItem } from '@/services/typings';
 import { STATUS_ENUM, REQUEST_TYPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
@@ -67,7 +74,7 @@ const MyTasks: React.FC = () => {
     }
   };
 
-  // ── 退回操作 (弹窗填原因) ──
+  // ── 退回操作 ──
   const openWithdrawModal = (id: number) => {
     setWithdrawingId(id);
     setWithdrawModalVisible(true);
@@ -116,6 +123,30 @@ const MyTasks: React.FC = () => {
       message.error(err?.message || '操作失败');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // ── 撤销完成: completed → in_progress ──
+  const handleReopen = async (id: number) => {
+    try {
+      await reopenRequest(id);
+      message.success('已撤销完成，需求回到处理中');
+      completedRef.current?.reload();
+      progressRef.current?.reload();
+    } catch (err: any) {
+      message.error(err?.message || '撤销失败');
+    }
+  };
+
+  // ── 撤销接受: in_progress → pending ──
+  const handleRevokeAccept = async (id: number) => {
+    try {
+      await revokeAcceptRequest(id);
+      message.success('已撤销接受，需求回到待处理');
+      progressRef.current?.reload();
+      pendingRef.current?.reload();
+    } catch (err: any) {
+      message.error(err?.message || '撤销失败');
     }
   };
 
@@ -181,21 +212,28 @@ const MyTasks: React.FC = () => {
     },
   ];
 
-  // ── 处理中: 完成 ──
+  // ── 处理中: 完成 + 撤销接受 ──
   const progressColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
     {
       title: '操作',
       valueType: 'option',
       key: 'option',
-      width: 100,
+      width: 180,
       render: (_, entity) => [
         <a key="complete" onClick={() => openCompleteModal(entity.id)}>完成</a>,
+        <Popconfirm
+          key="revoke"
+          title="确定撤销接受？需求将回到待处理状态"
+          onConfirm={() => handleRevokeAccept(entity.id)}
+        >
+          <a style={{ color: '#faad14' }}>撤销接受</a>
+        </Popconfirm>,
       ],
     },
   ];
 
-  // ── 已完成: 只读 + 下载 ──
+  // ── 已完成: 下载 + 撤销完成 ──
   const completedColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
     { title: '工时(h)', dataIndex: 'work_hours', hideInSearch: true, width: 80 },
@@ -204,35 +242,50 @@ const MyTasks: React.FC = () => {
       title: '操作',
       valueType: 'option',
       key: 'option',
-      width: 100,
+      width: 200,
       render: (_, entity) => [
         entity.attachment_path && (
           <FileDownloadButton
             key="download"
             mode="mine"
             requestId={entity.id}
-            fileName={`${entity.title}-附件`}
             size="small"
           />
         ),
+        <Popconfirm
+          key="reopen"
+          title="确定撤销完成？将清除处理结果、工时和附件记录，需求回到处理中"
+          onConfirm={() => handleReopen(entity.id)}
+        >
+          <a style={{ color: '#faad14' }}>撤销完成</a>
+        </Popconfirm>,
       ],
     },
   ];
 
-  // ── 我提交的: 只读列表 (全状态可见, 含 status 列) ──
+  // ── 我提交的: 只读 ──
   const submittedColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
-    { title: '研究员', dataIndex: 'researcher_name', hideInSearch: true },
     {
       title: '操作',
       valueType: 'option',
       key: 'option',
       width: 100,
       render: (_, entity) => [
-        <a key="detail" onClick={() => openDetail(entity)}>详情</a>,
+        <a key="view" onClick={() => openDetail(entity)}>详情</a>,
       ],
     },
   ];
+
+  const makeRequest = (statusFilter: string, isSubmitted = false) => async (params: any) => {
+    return getRequests({
+      ...params,
+      scope: 'mine',
+      status: isSubmitted ? undefined : statusFilter,
+      // "我提交的" tab 用 created_by 过滤，其他 tab 用 researcher_id
+      ...(isSubmitted ? {} : { researcher_id: currentUserId }),
+    });
+  };
 
   const tabItems = [
     {
@@ -241,12 +294,11 @@ const MyTasks: React.FC = () => {
       children: (
         <ProTable<RequestItem>
           actionRef={pendingRef}
-          rowKey="id"
-          search={{ labelWidth: 80 }}
-          request={async (params) =>
-            getRequests({ ...params, researcher_id: currentUserId, status: 'pending' })
-          }
           columns={pendingColumns}
+          rowKey="id"
+          request={makeRequest('pending')}
+          search={{ labelWidth: 100 }}
+          pagination={{ pageSize: 10 }}
         />
       ),
     },
@@ -256,12 +308,11 @@ const MyTasks: React.FC = () => {
       children: (
         <ProTable<RequestItem>
           actionRef={progressRef}
-          rowKey="id"
-          search={{ labelWidth: 80 }}
-          request={async (params) =>
-            getRequests({ ...params, researcher_id: currentUserId, status: 'in_progress' })
-          }
           columns={progressColumns}
+          rowKey="id"
+          request={makeRequest('in_progress')}
+          search={{ labelWidth: 100 }}
+          pagination={{ pageSize: 10 }}
         />
       ),
     },
@@ -271,12 +322,11 @@ const MyTasks: React.FC = () => {
       children: (
         <ProTable<RequestItem>
           actionRef={completedRef}
-          rowKey="id"
-          search={{ labelWidth: 80 }}
-          request={async (params) =>
-            getRequests({ ...params, researcher_id: currentUserId, status: 'completed' })
-          }
           columns={completedColumns}
+          rowKey="id"
+          request={makeRequest('completed')}
+          search={{ labelWidth: 100 }}
+          pagination={{ pageSize: 10 }}
         />
       ),
     },
@@ -286,12 +336,11 @@ const MyTasks: React.FC = () => {
       children: (
         <ProTable<RequestItem>
           actionRef={submittedRef}
-          rowKey="id"
-          search={{ labelWidth: 80 }}
-          request={async (params) =>
-            getRequests({ ...params, scope: 'mine' })
-          }
           columns={submittedColumns}
+          rowKey="id"
+          request={makeRequest('', true)}
+          search={{ labelWidth: 100 }}
+          pagination={{ pageSize: 10 }}
         />
       ),
     },

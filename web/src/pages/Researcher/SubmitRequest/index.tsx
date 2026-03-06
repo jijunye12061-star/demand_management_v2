@@ -25,7 +25,8 @@ const SubmitRequest: React.FC = () => {
 
   const [orgList, setOrgList] = useState<Organization[]>([]);
   const [salesList, setSalesList] = useState<SalesUser[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<number>();
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [isAdminSales, setIsAdminSales] = useState(false);
 
   const handleFinish = async (values: any) => {
     const payload = {
@@ -53,7 +54,8 @@ const SubmitRequest: React.FC = () => {
             created_at: dayjs(),
           });
           setOrgList([]);
-          setSelectedTeamId(undefined);
+          setSelectedTeamId(null);
+          setIsAdminSales(false);
         },
       });
     }
@@ -65,17 +67,33 @@ const SubmitRequest: React.FC = () => {
     const sales = salesList.find((s) => s.id === salesId);
     if (!sales) return;
 
-    setSelectedTeamId(sales.team_id);
     form.setFieldsValue({ org_name: undefined, org_type: undefined, department: undefined });
 
     try {
-      const orgs = await getOrganizations(sales.team_id);
-      setOrgList(orgs);
+      if (sales.team_id) {
+        // 普通销售：按团队加载
+        setSelectedTeamId(sales.team_id);
+        setIsAdminSales(false);
+        const orgs = await getOrganizations(sales.team_id);
+        setOrgList(orgs);
+      } else {
+        // 管理员无 team_id：用 load_all 加载全部机构
+        setSelectedTeamId(null);
+        setIsAdminSales(true);
+        const orgs = await getOrganizations(undefined, true);
+        setOrgList(orgs);
+      }
     } catch {
       message.error('加载机构列表失败');
       setOrgList([]);
     }
   };
+
+  // admin 时追加"内部需求"选项
+  const orgOptions = [
+    ...(isAdminSales ? [{ label: '📋 内部需求', value: '内部需求' }] : []),
+    ...orgList.map((org) => ({ label: org.name, value: org.name })),
+  ];
 
   return (
     <PageContainer title="代提需求">
@@ -168,15 +186,21 @@ const SubmitRequest: React.FC = () => {
             label="目标机构"
             colProps={{ span: 12 }}
             rules={[{ required: true, message: '请选择目标机构' }]}
-            options={orgList.map((org) => ({ label: org.name, value: org.name }))}
+            options={orgOptions}
             fieldProps={{
               showSearch: true,
-              disabled: !selectedTeamId,
-              placeholder: selectedTeamId ? '请选择目标机构' : '请先选择代提销售',
+              disabled: !isAdminSales && !selectedTeamId,
+              placeholder: (isAdminSales || selectedTeamId)
+                ? '请选择目标机构'
+                : '请先选择代提销售',
               onChange: (value: string) => {
-                const selected = orgList.find((org) => org.name === value);
-                if (selected) {
-                  form.setFieldsValue({ org_type: selected.org_type, department: undefined });
+                if (value === '内部需求') {
+                  form.setFieldsValue({ org_type: '内部', department: undefined });
+                } else {
+                  const selected = orgList.find((org) => org.name === value);
+                  if (selected) {
+                    form.setFieldsValue({ org_type: selected.org_type, department: undefined });
+                  }
                 }
               },
             }}
