@@ -195,7 +195,7 @@ chore: 构建/工具              style: 格式
 
 所有 API 统一使用以下包装格式返回 (包括 api.md 中定义的各接口):
 
-```json
+```jsonc
 // 成功
 {
   "code": 0,

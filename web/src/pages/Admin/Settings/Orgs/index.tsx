@@ -67,7 +67,7 @@ const Orgs: React.FC = () => {
             if (editingOrg) {
               await updateOrganization(editingOrg.id, values);
             } else {
-              await createOrganization(values);
+              await createOrganization(values as { name: string; org_type: string });
             }
             message.success(editingOrg ? '更新成功' : '创建成功');
             actionRef.current?.reload();

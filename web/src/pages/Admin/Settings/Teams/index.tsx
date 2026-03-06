@@ -117,7 +117,7 @@ const Teams: React.FC = () => {
         modalProps={{ destroyOnClose: true }}
         onFinish={async (values) => {
           try {
-            await createTeam(values);
+            await createTeam(values as { name: string });
             message.success('创建成功');
             actionRef.current?.reload();
             return true;
@@ -147,7 +147,7 @@ const Teams: React.FC = () => {
           dataSource={allOrgs}
           titles={['可选机构 (未分配)', `已分配给「${currentTeam?.name || ''}」`]}
           targetKeys={selectedOrgKeys}
-          onChange={setSelectedOrgKeys}
+          onChange={(targetKeys) => setSelectedOrgKeys(targetKeys as string[])}
           render={(item) => item.title}
           showSearch
           filterOption={(input, item) => item.title.toLowerCase().includes(input.toLowerCase())}
@@ -181,7 +181,7 @@ const Teams: React.FC = () => {
           dataSource={allMembers}
           titles={['可选销售 (未分配)', `已分配给「${currentTeam?.name || ''}」`]}
           targetKeys={selectedMemberKeys}
-          onChange={setSelectedMemberKeys}
+          onChange={(targetKeys) => setSelectedMemberKeys(targetKeys as string[])}
           render={(item) => item.title}
           showSearch
           filterOption={(input, item) => item.title.toLowerCase().includes(input.toLowerCase())}

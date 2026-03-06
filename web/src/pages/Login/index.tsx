@@ -57,8 +57,8 @@ export default function Login() {
   return (
     <div style={{backgroundColor: '#f0f2f5', height: '100vh', paddingTop: '12vh'}}>
       <LoginForm
-        title="需求管理系统"
-        subTitle="内部业务流转平台"
+        title="研究服务管理系统"
+        subTitle="研究服务与业务流转平台"
         onFinish={handleSubmit}
       >
         <ProFormText
@@ -67,7 +67,7 @@ export default function Login() {
             size: 'large',
             prefix: <UserOutlined/>,
           }}
-          placeholder="请输入用户名 (测试用如: admin, sales1)"
+          placeholder="请输入用户名 (如: jijunye)"
           rules={[
             {
               required: true,
