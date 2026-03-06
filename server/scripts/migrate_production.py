@@ -3,10 +3,11 @@ migrate_production.py — 将现有 data.db 迁移到新系统格式
 =========================================================
 操作:
   1. 备份原 DB
-  2. ALTER TABLE: 添加 password_version, withdraw_reason
-  3. 转换 attachment_path: 绝对路径 → 相对路径
+  2. ALTER TABLE: password_version, withdraw_reason, is_deleted (软删除)
+  3. 转换 attachment_path: 绝对/扁平路径 → uploads/{request_id}/filename
   4. 迁移附件文件: 扁平目录 → 按 request_id 分目录
   5. 创建性能索引
+  6. 数据完整性校验
 
 用法:
   python migrate_production.py                           # 默认 data/data.db
@@ -24,14 +25,34 @@ if not db_path.exists():
     print(f"❌ 数据库不存在: {db_path}")
     sys.exit(1)
 
-# data 根目录 = db 所在目录 (通常是 data/)
 data_dir = db_path.parent
-new_upload_dir = data_dir / "uploads"  # 新的附件根目录: data/uploads/
+new_upload_dir = data_dir / "uploads"
 
 print(f"{'🔍 DRY RUN' if dry_run else '🚀 EXECUTING'}")
 print(f"数据库: {db_path.resolve()}")
 print(f"附件目标: {new_upload_dir.resolve()}")
 print(f"{'='*60}\n")
+
+
+# ── 工具函数 ──
+def get_columns(table: str) -> set[str]:
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def get_indexes() -> set[str]:
+    return {r[1] for r in conn.execute("SELECT * FROM sqlite_master WHERE type='index'")}
+
+
+def add_column_if_missing(table: str, col: str, col_def: str) -> bool:
+    """幂等地添加列，返回是否执行了添加"""
+    if col in get_columns(table):
+        return False
+    sql = f"ALTER TABLE {table} ADD COLUMN {col} {col_def}"
+    print(f"  + {table}.{col}: {col_def}")
+    if not dry_run:
+        conn.execute(sql)
+    return True
+
 
 # ── Step 0: 备份 ──
 if not dry_run:
@@ -42,24 +63,20 @@ if not dry_run:
 conn = sqlite3.connect(str(db_path))
 conn.row_factory = sqlite3.Row
 
-# ── Step 1: ALTER TABLE ──
+# ── Step 1: ALTER TABLE — 所有新字段 ──
 print("Step 1: 添加新字段")
 
-existing_user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
-existing_req_cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)")}
+changes = [
+    # (table, column_name, column_definition)
+    ("users",         "password_version", "INTEGER DEFAULT 1"),
+    ("users",         "is_deleted",       "INTEGER DEFAULT 0"),
+    ("organizations", "is_deleted",       "INTEGER DEFAULT 0"),
+    ("teams",         "is_deleted",       "INTEGER DEFAULT 0"),
+    ("requests",      "withdraw_reason",  "TEXT"),
+]
 
-alters = []
-if "password_version" not in existing_user_cols:
-    alters.append(("users", "ALTER TABLE users ADD COLUMN password_version INTEGER DEFAULT 1"))
-if "withdraw_reason" not in existing_req_cols:
-    alters.append(("requests", "ALTER TABLE requests ADD COLUMN withdraw_reason TEXT"))
-
-for table, sql in alters:
-    print(f"  + {table}: {sql.split('ADD COLUMN ')[1]}")
-    if not dry_run:
-        conn.execute(sql)
-
-if not alters:
+added = sum(add_column_if_missing(t, c, d) for t, c, d in changes)
+if not added:
     print("  (无需添加，字段已存在)")
 
 conn.commit()
@@ -83,53 +100,43 @@ for row in rows:
         skipped += 1
         continue
 
-    # 解析旧路径: 可能是绝对路径 D:\...\uploads\481_文件名.xlsx
     old_path = Path(old_path_str)
-    old_filename = old_path.name  # e.g. "481_2026年1月基金申赎报告.xlsx"
+    old_filename = old_path.name
 
-    # 从文件名中去掉 "{request_id}_" 前缀，得到纯文件名
-    # 模式: {数字}_{真实文件名}
+    # 去掉 "{request_id}_" 前缀
     match = re.match(r"^\d+_(.+)$", old_filename)
     clean_filename = match.group(1) if match else old_filename
 
-    # 新的相对路径
     new_rel = f"uploads/{req_id}/{clean_filename}"
     new_abs = data_dir / new_rel
 
-    print(f"  [{req_id}] {old_filename}")
-    print(f"       → {new_rel}")
+    print(f"  [{req_id}] {old_filename} → {new_rel}")
 
-    # 尝试找到旧文件 (可能在多个位置)
+    # 在多个候选位置查找旧文件
     candidates = [
-        old_path,                                              # 原始绝对路径
-        Path("uploads") / old_filename,                        # 相对于 cwd
-        data_dir.parent / "uploads" / old_filename,            # 项目根/uploads/
+        old_path,                                   # 原始绝对路径
+        Path("uploads") / old_filename,             # 相对于 cwd
+        data_dir.parent / "uploads" / old_filename, # 项目根/uploads/
     ]
-
-    source = None
-    for c in candidates:
-        if c.exists():
-            source = c
-            break
+    source = next((c for c in candidates if c.exists()), None)
 
     if source:
         if not dry_run:
             new_abs.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, new_abs)
             conn.execute("UPDATE requests SET attachment_path = ? WHERE id = ?", (new_rel, req_id))
-        print(f"       ✅ 文件已复制 ({source})")
+        print(f"       ✅ 已复制 ({source})")
         migrated += 1
     else:
-        # 文件不存在，仍然更新路径（让系统知道预期位置）
         if not dry_run:
             conn.execute("UPDATE requests SET attachment_path = ? WHERE id = ?", (new_rel, req_id))
         print(f"       ⚠️  源文件未找到，仅更新路径")
         errors += 1
 
 conn.commit()
-print(f"\n  统计: 迁移 {migrated}, 跳过(已是新格式) {skipped}, 文件缺失 {errors}\n")
+print(f"\n  统计: 迁移 {migrated}, 跳过(已新格式) {skipped}, 文件缺失 {errors}\n")
 
-# ── Step 3: 创建索引 ──
+# ── Step 3: 创建性能索引 ──
 print("Step 3: 创建性能索引")
 
 indexes = [
@@ -155,46 +162,54 @@ print()
 # ── Step 4: 数据完整性校验 ──
 print("Step 4: 数据校验")
 
-# 4a: password_version 全部有值
-current_user_cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
-if "password_version" in current_user_cols:
-    pv_null = conn.execute("SELECT COUNT(*) FROM users WHERE password_version IS NULL").fetchone()[0]
-    if pv_null:
-        print(f"  修复 {pv_null} 个用户的 password_version 为 1 (SHA256)")
+# 4a: password_version — 确保无 NULL
+pv_null = conn.execute("SELECT COUNT(*) FROM users WHERE password_version IS NULL").fetchone()[0]
+if pv_null:
+    print(f"  修复 {pv_null} 个用户的 password_version 为 1 (SHA256)")
+    if not dry_run:
+        conn.execute("UPDATE users SET password_version = 1 WHERE password_version IS NULL")
+        conn.commit()
+else:
+    print(f"  ✅ password_version 全部已设置")
+
+# 4b: is_deleted — 确保无 NULL (旧数据默认未删除)
+for table in ("users", "organizations", "teams"):
+    null_count = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE is_deleted IS NULL").fetchone()[0]
+    if null_count:
+        print(f"  修复 {table}: {null_count} 条 is_deleted 设为 0")
         if not dry_run:
-            conn.execute("UPDATE users SET password_version = 1 WHERE password_version IS NULL")
+            conn.execute(f"UPDATE {table} SET is_deleted = 0 WHERE is_deleted IS NULL")
             conn.commit()
     else:
-        print(f"  ✅ password_version 全部已设置")
-else:
-    user_count_for_fix = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    print(f"  (dry-run) 将为 {user_count_for_fix} 个用户设置 password_version = 1")
+        print(f"  ✅ {table}.is_deleted 全部已设置")
 
-# 4b: 检查是否有非法的 request_type 值（数据清洗提示）
+# 4c: 需求类型分布（脏数据提示）
 types = conn.execute(
     "SELECT request_type, COUNT(*) FROM requests GROUP BY request_type ORDER BY COUNT(*) DESC"
 ).fetchall()
 print(f"  需求类型分布:")
 for t, c in types:
-    flag = "  ⚠️" if "(" in str(t) or len(str(t)) > 20 else ""  # 标记可能的脏数据
+    flag = "  ⚠️" if "(" in str(t) or len(str(t)) > 20 else ""
     print(f"    {t}: {c}{flag}")
 
-# 4c: attachment_path 格式检查
+# 4d: attachment_path 格式检查
 bad_paths = conn.execute(
     "SELECT COUNT(*) FROM requests WHERE attachment_path IS NOT NULL AND attachment_path NOT LIKE 'uploads/%'"
 ).fetchone()[0]
-if bad_paths:
-    print(f"  ⚠️  仍有 {bad_paths} 条附件路径非标准格式")
-else:
-    print(f"  ✅ 所有附件路径已标准化")
+print(f"  {'⚠️  仍有 ' + str(bad_paths) + ' 条附件路径非标准格式' if bad_paths else '✅ 所有附件路径已标准化'}")
 
-# 4d: 汇总
-user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-req_count = conn.execute("SELECT COUNT(*) FROM requests").fetchone()[0]
-org_count = conn.execute("SELECT COUNT(*) FROM organizations").fetchone()[0]
-team_count = conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
-att_count = conn.execute("SELECT COUNT(*) FROM requests WHERE attachment_path IS NOT NULL").fetchone()[0]
-print(f"\n  数据量: {user_count} 用户, {req_count} 需求, {org_count} 机构, {team_count} 团队, {att_count} 附件")
+# 4e: 汇总
+counts = {
+    label: conn.execute(sql).fetchone()[0]
+    for label, sql in [
+        ("用户", "SELECT COUNT(*) FROM users"),
+        ("需求", "SELECT COUNT(*) FROM requests"),
+        ("机构", "SELECT COUNT(*) FROM organizations"),
+        ("团队", "SELECT COUNT(*) FROM teams"),
+        ("附件", "SELECT COUNT(*) FROM requests WHERE attachment_path IS NOT NULL"),
+    ]
+}
+print(f"\n  数据量: {', '.join(f'{v} {k}' for k, v in counts.items())}")
 
 conn.close()
 
