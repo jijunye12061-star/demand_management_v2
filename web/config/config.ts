@@ -8,14 +8,13 @@ import proxy from './proxy';
 import routes from './routes';
 
 const { REACT_APP_ENV = 'dev' } = process.env;
+const isProd = REACT_APP_ENV !== 'dev';
 
 /**
  * @name 使用公共路径
  * @description 部署时的路径，如果部署在非根目录下，需要配置这个变量
  * @doc https://umijs.org/docs/api/config#publicpath
  */
-const { REACT_APP_ENV = 'dev' } = process.env;
-const isProd = REACT_APP_ENV !== 'dev';
 
 const PUBLIC_PATH: string = isProd ? '/ty/rsm/' : '/';
 
