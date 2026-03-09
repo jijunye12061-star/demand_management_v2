@@ -14,7 +14,10 @@ const { REACT_APP_ENV = 'dev' } = process.env;
  * @description 部署时的路径，如果部署在非根目录下，需要配置这个变量
  * @doc https://umijs.org/docs/api/config#publicpath
  */
-const PUBLIC_PATH: string = '/';
+const { REACT_APP_ENV = 'dev' } = process.env;
+const isProd = REACT_APP_ENV !== 'dev';
+
+const PUBLIC_PATH: string = isProd ? '/ty/rsm/' : '/';
 
 export default defineConfig({
   /**
@@ -23,8 +26,11 @@ export default defineConfig({
    * @doc https://umijs.org/docs/api/config#hash
    */
   hash: true,
-
+  base: isProd ? '/ty/rsm/' : '/',
   publicPath: PUBLIC_PATH,
+  define: {
+  API_BASE_URL: isProd ? '/ty/rsm' : '',
+},
 
   /**
    * @name 兼容性设置

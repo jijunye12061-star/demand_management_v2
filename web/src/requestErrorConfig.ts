@@ -87,11 +87,14 @@ export const errorConfig: RequestConfig = {
 
   // 请求拦截器
   requestInterceptors: [
-    (config: RequestOptions) => {
-      // 拦截请求配置，进行个性化处理。
-      const url = config?.url?.concat('?token=123');
-      return { ...config, url };
-    },
+      (config: RequestOptions) => {
+        // 生产环境给 API 请求加 /ty/rsm 前缀
+        let url = config?.url || '';
+        if (API_BASE_URL && url.startsWith('/api/')) {
+          url = `${API_BASE_URL}${url}`;
+        }
+        return { ...config, url };
+      },
   ],
 
   // 响应拦截器
