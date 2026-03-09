@@ -3,5 +3,6 @@ from app.models.request import Request
 from app.models.team import Team, TeamOrgMapping
 from app.models.organization import Organization
 from app.models.download_log import DownloadLog
+from app.models.template import RequestTemplate
 
-__all__ = ["User", "Request", "Team", "TeamOrgMapping", "Organization", "DownloadLog"]
+__all__ = ["User", "Request", "Team", "TeamOrgMapping", "Organization", "DownloadLog", "RequestTemplate"]

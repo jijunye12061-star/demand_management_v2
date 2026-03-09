@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.middleware import ResponseWrapperMiddleware
-from app.api import auth, requests, users, organizations, teams, files, stats, exports
+from app.api import auth, requests, users, organizations, teams, files, stats, exports, templates
 
 app = FastAPI(title="OpenSpec 需求管理系统", version="3.0.0")
 
@@ -28,6 +28,7 @@ app.include_router(teams.router, prefix=PREFIX)
 app.include_router(files.router, prefix=PREFIX)
 app.include_router(stats.router, prefix=PREFIX)
 app.include_router(exports.router, prefix=PREFIX)
+app.include_router(templates.router, prefix=PREFIX)
 
 
 @app.get("/")
