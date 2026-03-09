@@ -3,6 +3,7 @@ import { Button, message, Modal, Select } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { getMineOrgs } from '@/services/api';
 import { request } from '@umijs/max';
+declare const API_BASE_URL: string;
 
 interface FileDownloadButtonProps {
   requestId: number;
@@ -50,7 +51,7 @@ const FileDownloadButton: React.FC<FileDownloadButtonProps> = ({
       if (targetOrgName) params.set('org_name', targetOrgName);
       const token = localStorage.getItem('access_token');
       const resp = await fetch(
-        `/api/v1/files/download/${requestId}${params.toString() ? '?' + params.toString() : ''}`,
+        `${API_BASE_URL}/api/v1/files/download/${requestId}${params.toString() ? '?' + params.toString() : ''}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
       );
 

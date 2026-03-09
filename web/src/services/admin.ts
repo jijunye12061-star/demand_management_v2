@@ -1,5 +1,6 @@
 import { request } from '@umijs/max';
 import type { RequestListParams } from './typings';
+declare const API_BASE_URL: string;
 
 // ─── Stats ───
 
@@ -154,7 +155,7 @@ export async function exportFullExcel(params: Record<string, any>) {
   const qs = new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== undefined && v !== null && v !== '')),
   ).toString();
-  const resp = await fetch(`/api/v1/exports/requests?${qs}`, {
+  const resp = await fetch(`${API_BASE_URL}/api/v1/exports/requests?${qs}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!resp.ok) throw new Error('导出失败');

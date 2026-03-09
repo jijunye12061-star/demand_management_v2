@@ -3,6 +3,7 @@ import { AvatarDropdown, AvatarName } from './components/RightContent/AvatarDrop
 import { message } from 'antd';
 
 const loginPath = '/login';
+declare const API_BASE_URL: string;
 
 // 1. 获取全局初始状态 (从 localStorage 读取)
 export async function getInitialState(): Promise<{
@@ -56,13 +57,18 @@ export const layout: RunTimeLayoutConfig = ({ initialState }) => {
 export const request: RequestConfig = {
   timeout: 10000,
   requestInterceptors: [
-    (config: any) => {
-      const token = localStorage.getItem('access_token');
-      if (token && config.headers) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      return config;
-    },
+      (config: any) => {
+        // 1. Token 注入
+        const token = localStorage.getItem('access_token');
+        if (token && config.headers) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        // 2. 生产环境 API 前缀注入
+        if (API_BASE_URL && config.url?.startsWith('/api/')) {
+          config.url = `${API_BASE_URL}${config.url}`;
+        }
+        return config;
+      },
   ],
   responseInterceptors: [
     (response: any) => {
