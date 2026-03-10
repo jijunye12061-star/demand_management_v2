@@ -119,7 +119,7 @@ const SubmitRequest: React.FC = () => {
             label="需求标题"
             colProps={{ span: 16 }}
             rules={[{ required: true, message: '请输入需求标题' }]}
-            placeholder="请输入需求标题"
+            placeholder="为方便动态共享,请做脱敏处理:不包含机构名,仅说明需求事项概要即可"
           />
           <ProFormDateTimePicker
             name="created_at"
@@ -233,7 +233,7 @@ const SubmitRequest: React.FC = () => {
             name="is_confidential"
             label="严格保密"
             colProps={{ span: 12 }}
-            tooltip="开启后，需求动态大厅不可见"
+            tooltip="如使用到了机构的信息资料或机构明确提出保密需求请务必勾选"
           />
         </ProForm>
       </Card>
