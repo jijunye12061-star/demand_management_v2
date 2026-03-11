@@ -1,10 +1,21 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.backup import start_scheduler, stop_scheduler
 from app.core.middleware import ResponseWrapperMiddleware
 from app.api import auth, requests, users, organizations, teams, files, stats, exports, templates
 
-app = FastAPI(title="OpenSpec 需求管理系统", version="3.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="研究服务管理系统", version="3.0.0", lifespan=lifespan)
 
 # CORS - allow all for development, restrict in production
 app.add_middleware(
@@ -33,4 +44,4 @@ app.include_router(templates.router, prefix=PREFIX)
 
 @app.get("/")
 def root():
-    return {"service": "OpenSpec API", "version": "3.0.0"}
+    return {"service": "研究服务管理系统", "version": "3.0.0"}
