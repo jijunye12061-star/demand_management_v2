@@ -79,7 +79,7 @@ const Dashboard: React.FC = () => {
   // ── 图表数据 ──
   // 研究员工作量: 柱状图 (件数 + 工时)
   const workloadBarData = [...ranking]
-    .sort((a, b) => a.work_hours - b.work_hours)  // 升序 → 横向柱状图从上到下=降序
+    .sort((a, b) => b.work_hours - a.work_hours)  // 升序 → 横向柱状图从上到下=降序
     .map((r) => ({
       name: r.display_name,
       已完成: r.completed_count,
