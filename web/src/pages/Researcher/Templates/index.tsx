@@ -9,7 +9,7 @@ import {
   ProFormSwitch,
   ProFormDependency,
 } from '@ant-design/pro-components';
-import type { ActionType, ProColumns } from '@ant-design/pro-components';
+import type { ActionType, ProColumns, ProFormInstance } from '@ant-design/pro-components';
 import { Button, Popconfirm, Tag, Space, Typography, App } from 'antd';
 import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
@@ -21,7 +21,8 @@ import {
   createRequestFromTemplate,
 } from '@/services/templates';
 import type { TemplateItem } from '@/services/templates';
-import { getSales } from '@/services/api';
+import { getSales, getOrganizations } from '@/services/api';
+import type { Organization } from '@/services/typings';
 import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 
 const { Text } = Typography;
@@ -32,7 +33,6 @@ const renderTitlePreview = (pattern: string) => {
   const y = today.getFullYear();
   const m = String(today.getMonth() + 1).padStart(2, '0');
   const d = String(today.getDate()).padStart(2, '0');
-  const iso = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString();
   // ISO week number
   const jan1 = new Date(y, 0, 1);
   const days = Math.floor((today.getTime() - jan1.getTime()) / 86400000);
@@ -45,14 +45,17 @@ const renderTitlePreview = (pattern: string) => {
     .replace('{year}', String(y));
 };
 
-const ORG_TYPE_OPTIONS = ['银行', '券商', '保险', '理财', 'FOF', '信托', '私募', '期货', '其他'].map(
-  (t) => ({ label: t, value: t }),
-);
+/** 特殊机构选项 */
+const SPECIAL_ORGS = [
+  { name: '内部需求', org_type: '内部' },
+  { name: '全体机构', org_type: '内部' },
+];
 
 const Templates: React.FC = () => {
   const { message } = App.useApp();
   const { initialState } = useModel('@@initialState');
   const actionRef = useRef<ActionType>(null);
+  const editFormRef = useRef<ProFormInstance>(null);
 
   // 编辑/新建 Modal
   const [editVisible, setEditVisible] = useState(false);
@@ -61,6 +64,9 @@ const Templates: React.FC = () => {
   // 从模板创建需求 Modal
   const [useVisible, setUseVisible] = useState(false);
   const [usingTemplate, setUsingTemplate] = useState<TemplateItem | null>(null);
+
+  // 机构列表（含特殊选项）
+  const [orgList, setOrgList] = useState<{ name: string; org_type?: string }[]>([]);
 
   const columns: ProColumns<TemplateItem>[] = [
     {
@@ -88,6 +94,7 @@ const Templates: React.FC = () => {
     { title: '需求类型', dataIndex: 'request_type', valueType: 'select', fieldProps: { options: REQUEST_TYPE_OPTIONS }, width: 120 },
     { title: '研究范围', dataIndex: 'research_scope', search: false, width: 100 },
     { title: '机构', dataIndex: 'org_name', search: false, width: 100, ellipsis: true },
+    { title: '机构类型', dataIndex: 'org_type', search: false, width: 80 },
     {
       title: '保密',
       dataIndex: 'is_confidential',
@@ -131,6 +138,17 @@ const Templates: React.FC = () => {
     },
   ];
 
+  /** 处理机构选择联动 */
+  const handleOrgChange = (val: string) => {
+    const special = SPECIAL_ORGS.find((o) => o.name === val);
+    if (special) {
+      editFormRef.current?.setFieldsValue({ org_type: special.org_type, department: undefined });
+    } else {
+      const org = orgList.find((o) => o.name === val);
+      editFormRef.current?.setFieldsValue({ org_type: org?.org_type || undefined, department: undefined });
+    }
+  };
+
   /** 新建/编辑模板的公共表单字段 */
   const templateFormFields = (
     <>
@@ -155,8 +173,31 @@ const Templates: React.FC = () => {
         rules={[{ required: true }]}
       />
       <ProFormSelect name="research_scope" label="研究范围" options={RESEARCH_SCOPE_OPTIONS} />
-      <ProFormText name="org_name" label="机构名称" />
-      <ProFormSelect name="org_type" label="机构类型" options={ORG_TYPE_OPTIONS} />
+
+      {/* 机构名称：从 API 加载 + 特殊选项（内部需求、全体机构） */}
+      <ProFormSelect
+        name="org_name"
+        label="机构名称"
+        fieldProps={{
+          showSearch: true,
+          onChange: handleOrgChange,
+        }}
+        request={async () => {
+          const orgs = await getOrganizations();
+          setOrgList(orgs);
+          const specialOptions = SPECIAL_ORGS.map((o) => ({ label: o.name, value: o.name }));
+          const orgOptions = orgs.map((o) => ({ label: o.name, value: o.name }));
+          return [...specialOptions, ...orgOptions];
+        }}
+      />
+      {/* 机构类型：自动填入，不可编辑 */}
+      <ProFormText
+        name="org_type"
+        label="机构类型"
+        readonly
+        fieldProps={{ placeholder: '选择机构后自动填入' }}
+      />
+
       <ProFormDependency name={['org_type']}>
         {({ org_type }) => {
           const depts = org_type ? ORG_DEPARTMENT_MAP[org_type] : [];
@@ -203,6 +244,7 @@ const Templates: React.FC = () => {
       <ModalForm
         title={editingRecord ? '编辑模板' : '新建模板'}
         open={editVisible}
+        formRef={editFormRef}
         onOpenChange={(v) => { if (!v) { setEditVisible(false); setEditingRecord(null); } }}
         initialValues={
           editingRecord
