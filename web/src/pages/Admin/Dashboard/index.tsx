@@ -62,8 +62,7 @@ const Dashboard: React.FC = () => {
     { title: '已完成', dataIndex: 'completed_count', sorter: (a: any, b: any) => a.completed_count - b.completed_count },
     { title: '处理中', dataIndex: 'in_progress_count' },
     { title: '待处理', dataIndex: 'pending_count' },
-    { title: '总工时(h)', dataIndex: 'work_hours', render: (v: any) => v?.toFixed(1) },
-  ];
+    { title: '总工时(h)', dataIndex: 'work_hours', sorter: (a: any, b: any) => (a.work_hours ?? 0) - (b.work_hours ?? 0), render: (v: any) => v?.toFixed(1) },  ];
 
   const detailColumns: ProColumns<RequestItem>[] = [
     { title: '标题', dataIndex: 'title', ellipsis: true },
@@ -79,13 +78,15 @@ const Dashboard: React.FC = () => {
 
   // ── 图表数据 ──
   // 研究员工作量: 柱状图 (件数 + 工时)
-  const workloadBarData = ranking.map((r) => ({
-    name: r.display_name,
-    已完成: r.completed_count,
-    处理中: r.in_progress_count,
-    待处理: r.pending_count,
-    工时: r.work_hours,
-  }));
+  const workloadBarData = [...ranking]
+    .sort((a, b) => a.work_hours - b.work_hours)  // 升序 → 横向柱状图从上到下=降序
+    .map((r) => ({
+      name: r.display_name,
+      已完成: r.completed_count,
+      处理中: r.in_progress_count,
+      待处理: r.pending_count,
+      工时: r.work_hours,
+    }));
 
   // 需求类型: 饼图
   const typeData = charts?.type_distribution || [];
