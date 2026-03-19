@@ -108,7 +108,12 @@ const MyRequests: React.FC = () => {
       copyable: true,
       ellipsis: true,
       render: (dom, entity) => (
-        <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>{dom}</a>
+        <span>
+          <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>{dom}</a>
+          {(entity.automation_hours! > 0 || !!entity.parent_request_id) && (
+            <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>自动化</Tag>
+          )}
+        </span>
       ),
     },
     {

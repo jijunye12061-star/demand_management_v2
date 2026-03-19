@@ -66,7 +66,17 @@ const Requests: React.FC = () => {
 
   const columns: ProColumns<RequestItem>[] = [
     { title: 'ID', dataIndex: 'id', width: 50, hideInSearch: true },
-    { title: '标题', dataIndex: 'title', ellipsis: true },
+    {
+      title: '标题', dataIndex: 'title', ellipsis: true,
+      render: (dom, entity) => (
+        <span>
+          {dom}
+          {(entity.automation_hours! > 0 || !!entity.parent_request_id) && (
+            <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>自动化</Tag>
+          )}
+        </span>
+      ),
+    },
     { title: '需求描述', dataIndex: 'description', ellipsis: true, width: 200, hideInSearch: true },
     { title: '关键字', dataIndex: 'keyword', hideInTable: true },
     {

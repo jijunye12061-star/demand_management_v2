@@ -175,7 +175,14 @@ const MyTasks: React.FC = () => {
       title: '需求标题',
       dataIndex: 'title',
       ellipsis: true,
-      render: (dom, entity) => <a onClick={() => openDetail(entity)}>{dom}</a>,
+      render: (dom, entity) => (
+        <span>
+          <a onClick={() => openDetail(entity)}>{dom}</a>
+          {(entity.automation_hours! > 0 || !!entity.parent_request_id) && (
+            <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>自动化</Tag>
+          )}
+        </span>
+      ),
     },
     {
       title: '关键字搜索',
