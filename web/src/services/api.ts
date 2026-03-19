@@ -1,5 +1,5 @@
 import { request } from '@umijs/max';
-import type { Organization, Researcher, SalesUser, RequestItem, RequestListParams } from './typings';
+import type { Organization, Researcher, SalesUser, RequestItem, RequestListParams, CollaboratorInput } from './typings';
 
 // --- Organizations ---
 export async function getOrganizations(team_id?: number, load_all?: boolean) {
@@ -90,12 +90,15 @@ export async function withdrawRequest(id: number, reason: string) {
 
 export async function completeRequest(
   id: number,
-  data: { result_note?: string; work_hours?: number; attachment?: File },
+  data: { result_note?: string; work_hours?: number; attachment?: File; collaborators?: CollaboratorInput[] },
 ) {
   const formData = new FormData();
   if (data.result_note) formData.append('result_note', data.result_note);
   if (data.work_hours !== undefined) formData.append('work_hours', String(data.work_hours));
   if (data.attachment) formData.append('attachment', data.attachment);
+  if (data.collaborators?.length) {
+    formData.append('collaborators', JSON.stringify(data.collaborators));
+  }
 
   return request(`/api/v1/requests/${id}/complete`, {
     method: 'POST',
@@ -133,6 +136,11 @@ export async function revokeAcceptRequest(id: number) {
   return request(`/api/v1/requests/${id}/revoke-accept`, {
     method: 'POST',
   });
+}
+
+/** 获取单条需求详情（含 collaborators 数组） */
+export async function getRequestDetail(id: number) {
+  return request<RequestItem>(`/api/v1/requests/${id}`, { method: 'GET' });
 }
 
 /** 需求动态图表统计 */

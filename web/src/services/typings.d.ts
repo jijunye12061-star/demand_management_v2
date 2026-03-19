@@ -16,6 +16,17 @@ export interface SalesUser {
   team_id: number;
 }
 
+export interface CollaboratorInput {
+  user_id: number;
+  work_hours: number;
+}
+
+export interface CollaboratorDetail {
+  user_id: number;
+  display_name: string;
+  work_hours: number;
+}
+
 export interface RequestItem {
   id: number;
   title: string;
@@ -40,6 +51,7 @@ export interface RequestItem {
   researcher_name?: string;
   download_count?: number;
   withdraw_reason?: string;
+  collaborators?: CollaboratorDetail[];
 }
 
 export interface RequestListParams {

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.request import Request
 from app.models.user import User
 from app.models.download_log import DownloadLog
+from app.models.collaborator import RequestCollaborator
 
 BJT = timezone(timedelta(hours=8))
 
@@ -57,12 +58,18 @@ def get_overview(db: Session, period: str) -> dict:
         Request.status != "canceled",
     ).one()
 
+    collab_hours = (
+        db.query(func.coalesce(func.sum(RequestCollaborator.work_hours), 0))
+        .join(Request, RequestCollaborator.request_id == Request.id)
+        .filter(Request.status == "completed", Request.created_at >= start)
+        .scalar()
+    )
     return {
         "total": rows.total or 0,
         "pending": rows.pending or 0,
         "in_progress": rows.in_progress or 0,
         "completed": rows.completed or 0,
-        "total_hours": round(rows.total_hours or 0, 1),
+        "total_hours": round((rows.total_hours or 0) + (collab_hours or 0), 1),
     }
 
 
@@ -88,17 +95,35 @@ def get_researcher_ranking(db: Session, period: str) -> list[dict]:
         .order_by(text("completed_count DESC"))
         .all()
     )
-    return [
-        {
+    collab_stats = (
+        db.query(
+            RequestCollaborator.user_id,
+            func.count(RequestCollaborator.id).label("collab_count"),
+            func.coalesce(func.sum(RequestCollaborator.work_hours), 0).label("collab_hours"),
+        )
+        .join(Request, RequestCollaborator.request_id == Request.id)
+        .filter(Request.status == "completed", Request.completed_at >= start)
+        .group_by(RequestCollaborator.user_id)
+        .all()
+    )
+    collab_map = {r.user_id: (r.collab_count, r.collab_hours) for r in collab_stats}
+
+    result = []
+    for r in rows:
+        cc, ch = collab_map.get(r.user_id, (0, 0))
+        result.append({
             "user_id": r.user_id,
             "display_name": r.display_name,
             "completed_count": r.completed_count or 0,
             "work_hours": round(r.work_hours or 0, 1),
             "pending_count": r.pending_count or 0,
             "in_progress_count": r.in_progress_count or 0,
-        }
-        for r in rows
-    ]
+            "collab_count": cc,
+            "collab_hours": round(ch, 1),
+            "total_hours": round((r.work_hours or 0) + ch, 1),
+            "total_completed": (r.completed_count or 0) + cc,
+        })
+    return result
 
 
 # ─── P6-2: Matrix helpers ────────────────────────────────────────────────────
@@ -129,14 +154,53 @@ def _format_matrix_rows(rows) -> list[dict]:
 # ─── P6-2: Matrix endpoints ──────────────────────────────────────────────────
 
 def get_researcher_matrix(db: Session) -> list[dict]:
-    rows = (
-        db.query(User.display_name.label("name"), *_build_period_columns())
-        .join(Request, Request.researcher_id == User.id)
+    # 主负责 + 协作 的参与关系 UNION，统一按 completed_at 计算各时段件数
+    main_q = (
+        db.query(Request.researcher_id.label("user_id"), Request.completed_at.label("completed_at"))
         .filter(Request.status == "completed")
+    )
+    collab_q = (
+        db.query(RequestCollaborator.user_id.label("user_id"), Request.completed_at.label("completed_at"))
+        .join(Request, RequestCollaborator.request_id == Request.id)
+        .filter(Request.status == "completed")
+    )
+    participation = main_q.union_all(collab_q).subquery()
+
+    periods = {
+        "today": _period_start("today"),
+        "week": _period_start("week"),
+        "month": _period_start("month"),
+        "quarter": _period_start("quarter"),
+        "year": _period_start("year"),
+    }
+    period_cols = [
+        func.sum(case((participation.c.completed_at >= s, 1), else_=0)).label(k)
+        for k, s in periods.items()
+    ]
+    rows = (
+        db.query(User.display_name.label("name"), *period_cols)
+        .join(participation, participation.c.user_id == User.id)
+        .filter(User.role.in_(["researcher", "admin"]))
         .group_by(User.id)
         .all()
     )
-    return _format_matrix_rows(rows)
+    result = _format_matrix_rows(rows)
+
+    # 唯一需求合计：直接统计 requests 表，避免协作多人导致重复计数
+    unique_cols = [
+        func.sum(case((Request.completed_at >= s, 1), else_=0)).label(k)
+        for k, s in periods.items()
+    ]
+    u = db.query(*unique_cols).filter(Request.status == "completed").one()
+    result.append({
+        "name": "__unique_total__",
+        "today": u.today or 0,
+        "week": u.week or 0,
+        "month": u.month or 0,
+        "quarter": u.quarter or 0,
+        "year": u.year or 0,
+    })
+    return result
 
 
 def get_type_matrix(db: Session) -> list[dict]:
@@ -308,12 +372,26 @@ def get_researcher_detail(db: Session, user_id: int) -> dict:
         .group_by(Request.org_name)
         .order_by(text("value DESC")).limit(10).all()
     )
+    collab_summary = (
+        db.query(
+            func.count(RequestCollaborator.id).label("collab_count"),
+            func.coalesce(func.sum(RequestCollaborator.work_hours), 0).label("collab_hours"),
+        )
+        .join(Request, RequestCollaborator.request_id == Request.id)
+        .filter(
+            RequestCollaborator.user_id == user_id,
+            Request.status == "completed",
+        )
+        .first()
+    )
     return {
         "summary": {
             "completed": summary.completed or 0,
             "in_progress": summary.in_progress or 0,
             "pending": summary.pending or 0,
             "total_hours": round(summary.total_hours or 0, 1),
+            "collab_count": collab_summary.collab_count or 0,
+            "collab_hours": round(collab_summary.collab_hours or 0, 1),
         },
         "weekly_trend": _weekly_trend(db, [base]),
         "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
@@ -446,3 +524,34 @@ def get_sales_matrix_v2(db: Session) -> list[dict]:
         if any([d["today"], d["week"], d["month"], d["quarter"], d["year"]]):
             result.append(d)
     return result
+
+
+# ─── 研究员参与的全部需求（主负责 + 协作），用于管理员看板明细展开 ──────────────
+
+def get_researcher_all_requests(db: Session, user_id: int, page: int = 1, page_size: int = 10) -> dict:
+    """返回研究员参与的所有需求：主负责 + 协作，排除 canceled/deleted。"""
+    main_ids = db.query(Request.id).filter(
+        Request.researcher_id == user_id,
+        Request.status.not_in(["canceled", "deleted"]),
+    )
+    collab_ids = (
+        db.query(RequestCollaborator.request_id.label("id"))
+        .join(Request, RequestCollaborator.request_id == Request.id)
+        .filter(
+            RequestCollaborator.user_id == user_id,
+            Request.status.not_in(["canceled", "deleted"]),
+        )
+    )
+    id_union = main_ids.union(collab_ids).subquery()
+
+    total = db.query(func.count()).select_from(id_union).scalar() or 0
+    rows = (
+        db.query(Request)
+        .filter(Request.id.in_(db.query(id_union)))
+        .order_by(Request.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    items = [{c.name: getattr(r, c.name) for c in r.__table__.columns} for r in rows]
+    return {"items": items, "total": total}

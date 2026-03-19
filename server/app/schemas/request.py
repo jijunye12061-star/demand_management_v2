@@ -96,3 +96,12 @@ class ReassignRequest(BaseModel):
 
 class ConfidentialRequest(BaseModel):
     is_confidential: bool
+
+
+class CollaboratorItem(BaseModel):
+    user_id: int
+    work_hours: float = 0
+
+
+class CollaboratorsUpdate(BaseModel):
+    collaborators: list[CollaboratorItem] = []

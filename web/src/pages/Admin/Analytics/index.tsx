@@ -10,6 +10,7 @@ import {
   getCharts, getResearcherMatrix, getResearcherRanking, getTypeMatrix,
   getOrgMatrix, getSalesMatrix, getDownloadStats,
   getResearcherDetail, getTypeDetail, getOrgDetail, getSalesDetail,
+  getResearcherAllRequests,
 } from '@/services/admin';
 import { getRequests } from '@/services/api';
 import type { RequestItem } from '@/services/typings';
@@ -159,10 +160,12 @@ const ResearcherTab: React.FC = () => {
   }, []);
 
   const periodKey = period;
-  const barData = matrix.map(r => ({ name: r.name, 完成件数: r[periodKey] || 0 })).filter(d => d.完成件数 > 0);
+  const uniqueTotalRow = matrix.find(r => r.name === '__unique_total__');
+  const matrixRows = matrix.filter(r => r.name !== '__unique_total__');
+  const barData = matrixRows.map(r => ({ name: r.name, 完成件数: r[periodKey] || 0 })).filter(d => d.完成件数 > 0);
   const workload = charts?.researcher_workload || [];
   const hoursData = workload.map((r: any) => ({ name: r.name, 已完成: r.completed, 处理中: r.in_progress, 待处理: r.pending }));
-  const summary = calcSummary(matrix);
+  const summary = uniqueTotalRow ? { ...uniqueTotalRow, name: '合计' } : calcSummary(matrixRows);
 
   return (
     <Spin spinning={loading || detailLoading}>
@@ -182,10 +185,16 @@ const ResearcherTab: React.FC = () => {
       {selectedId && detail ? (
         <>
           <StatisticCard.Group direction="row" style={{ marginBottom: 16 }}>
-            <StatisticCard statistic={{ title: '已完成', value: detail.summary.completed, valueStyle: { color: '#52c41a' } }} />
+            <StatisticCard statistic={{ title: '主负责完成', value: detail.summary.completed, valueStyle: { color: '#52c41a' } }} />
+            <StatisticCard statistic={{ title: '协作完成', value: detail.summary.collab_count ?? 0, valueStyle: { color: '#13c2c2' } }} />
             <StatisticCard statistic={{ title: '处理中', value: detail.summary.in_progress, valueStyle: { color: '#1890ff' } }} />
             <StatisticCard statistic={{ title: '待处理', value: detail.summary.pending, valueStyle: { color: '#faad14' } }} />
-            <StatisticCard statistic={{ title: '总工时(h)', value: detail.summary.total_hours, valueStyle: { color: '#722ed1' } }} />
+            <StatisticCard statistic={{
+              title: '总工时(h)',
+              value: ((detail.summary.total_hours ?? 0) + (detail.summary.collab_hours ?? 0)).toFixed(1),
+              valueStyle: { color: '#722ed1' },
+              description: detail.summary.collab_hours > 0 ? `含协作 ${detail.summary.collab_hours}h` : undefined,
+            }} />
           </StatisticCard.Group>
           <Row gutter={16} style={{ marginBottom: 16 }}>
             <Col span={12}><WeeklyTrend data={detail.weekly_trend} title="近12周完成趋势" /></Col>
@@ -195,9 +204,12 @@ const ResearcherTab: React.FC = () => {
             <Col span={24}><TopBar data={detail.org_distribution} title="服务机构 Top 10" color="#722ed1" /></Col>
           </Row>
           <ProTable<RequestItem>
-            headerTitle="需求明细"
+            headerTitle="需求明细（含协作）"
             columns={requestDetailCols}
-            request={async (params) => getRequests({ researcher_id: selectedId, current: params.current, pageSize: params.pageSize })}
+            request={async (params) => {
+              const res = await getResearcherAllRequests(selectedId!, params.current ?? 1, params.pageSize ?? 10);
+              return { data: res.items, total: res.total, success: true };
+            }}
             rowKey="id" search={false} pagination={{ pageSize: 10 }} options={false} size="small"
           />
         </>
@@ -242,7 +254,7 @@ const ResearcherTab: React.FC = () => {
           <ProTable
             headerTitle="研究员完成数矩阵 (按时间维度)"
             columns={matrixCols('研究员')}
-            dataSource={summary ? [...matrix, summary] : matrix}
+            dataSource={summary ? [...matrixRows, summary] : matrixRows}
             rowKey="name" search={false} pagination={false} options={false} size="middle"
             rowClassName={(r) => r.name === '合计' ? 'ant-table-row-summary' : ''}
           />

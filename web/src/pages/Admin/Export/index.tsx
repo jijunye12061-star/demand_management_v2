@@ -4,7 +4,7 @@ import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Button, App, Tag } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { getExportPreview, exportFullExcel } from '@/services/admin';
-import { getResearchers, getSales } from '@/services/api';
+import { getResearchers, getSales, getRequestDetail } from '@/services/api';
 import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 
@@ -17,6 +17,16 @@ const Export: React.FC = () => {
   // 详情抽屉
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<any>(null);
+
+  const openDetail = async (record: any) => {
+    setCurrentRow(record);
+    setDrawerVisible(true);
+    // 异步补全 collaborators（列表接口不含此字段）
+    try {
+      const full = await getRequestDetail(record.id);
+      setCurrentRow((prev: any) => ({ ...prev, collaborators: full.collaborators }));
+    } catch {}
+  };
 
   const handleExport = async () => {
     try {
@@ -37,7 +47,7 @@ const Export: React.FC = () => {
       dataIndex: 'title',
       ellipsis: true,
       render: (dom, entity) => (
-        <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>{dom}</a>
+        <a onClick={() => openDetail(entity)}>{dom}</a>
       ),
     },
     { title: '需求描述', dataIndex: 'description', ellipsis: true },
@@ -54,9 +64,24 @@ const Export: React.FC = () => {
         return <Tag color={cfg?.status?.toLowerCase()}>{cfg?.text || r.status}</Tag>;
       },
     },
-    { title: '研究员', dataIndex: 'researcher_name', width: 100 },
+    { title: '研究员', dataIndex: 'researcher_name', width: 120, ellipsis: true },
+    { title: '协作明细', dataIndex: 'collab_details', width: 160, ellipsis: true, render: (v: any) => v || '-' },
     { title: '销售', dataIndex: 'sales_name', width: 100 },
-    { title: '工时', dataIndex: 'work_hours', width: 70 },
+    {
+      title: '总工时(h)',
+      dataIndex: 'total_work_hours',
+      width: 90,
+      render: (v: any, r: any) => (
+        <span>
+          {v ?? r.work_hours ?? 0}
+          {r.collab_details && (
+            <span style={{ color: '#8c8c8c', fontSize: 11, marginLeft: 4 }}>
+              (含协作)
+            </span>
+          )}
+        </span>
+      ),
+    },
     { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 160 },
     { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', width: 160 },
   ];

@@ -1,5 +1,5 @@
 import { request } from '@umijs/max';
-import type { RequestListParams } from './typings';
+import type { RequestListParams, RequestItem, CollaboratorInput } from './typings';
 declare const API_BASE_URL: string;
 
 // ─── Stats ───
@@ -20,6 +20,12 @@ export async function getResearcherMatrix() {
 
 export async function getResearcherDetail(userId: number) {
   return request<any>('/api/v1/stats/researcher-detail', { params: { user_id: userId } });
+}
+
+export async function getResearcherAllRequests(userId: number, page: number = 1, pageSize: number = 10) {
+  return request<{ items: RequestItem[]; total: number }>('/api/v1/stats/researcher-requests', {
+    params: { user_id: userId, page, page_size: pageSize },
+  });
 }
 
 export async function getTypeMatrix() {
@@ -139,6 +145,13 @@ export function getExportUrl(params: Record<string, any>) {
 }
 
 // ─── Requests Management ───
+
+export async function updateRequestCollaborators(id: number, collaborators: CollaboratorInput[]) {
+  return request(`/api/v1/requests/${id}/collaborators`, {
+    method: 'PUT',
+    data: { collaborators },
+  });
+}
 
 export async function deleteRequest(id: number) {
   return request(`/api/v1/requests/${id}`, { method: 'DELETE' });

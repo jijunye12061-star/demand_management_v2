@@ -4,5 +4,6 @@ from app.models.team import Team, TeamOrgMapping
 from app.models.organization import Organization
 from app.models.download_log import DownloadLog
 from app.models.template import RequestTemplate
+from app.models.collaborator import RequestCollaborator
 
-__all__ = ["User", "Request", "Team", "TeamOrgMapping", "Organization", "DownloadLog", "RequestTemplate"]
+__all__ = ["User", "Request", "Team", "TeamOrgMapping", "Organization", "DownloadLog", "RequestTemplate", "RequestCollaborator"]

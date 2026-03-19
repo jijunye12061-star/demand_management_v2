@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.request import Request
 from app.models.user import User
 from app.models.download_log import DownloadLog
+from app.models.collaborator import RequestCollaborator
 from app.schemas.request import RequestListParams
 from app.utils.datetime_utils import now_beijing
 
@@ -126,6 +127,47 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
 
         items.append(d)
 
+    # ── 批量拼接协作者名字 + 工时 ──
+    request_ids = [item["id"] for item in items]
+    if request_ids:
+        collabs = (
+            db.query(
+                RequestCollaborator.request_id,
+                User.display_name,
+                RequestCollaborator.work_hours,
+            )
+            .join(User, RequestCollaborator.user_id == User.id)
+            .filter(RequestCollaborator.request_id.in_(request_ids))
+            .order_by(RequestCollaborator.request_id, RequestCollaborator.id)
+            .all()
+        )
+        # collab_map: {request_id: [(display_name, work_hours), ...]}
+        collab_map: dict[int, list] = {}
+        for c in collabs:
+            collab_map.setdefault(c.request_id, []).append((c.display_name, c.work_hours or 0))
+
+        for item in items:
+            rid = item["id"]
+            pairs = collab_map.get(rid, [])
+            if pairs:
+                base = item.get("researcher_name") or ""
+                item["researcher_name"] = ", ".join(
+                    filter(None, [base] + [name for name, _ in pairs])
+                )
+                item["collab_details"] = "、".join(
+                    f"{name}({wh}h)" for name, wh in pairs
+                )
+                item["total_work_hours"] = round(
+                    (item.get("work_hours") or 0) + sum(wh for _, wh in pairs), 1
+                )
+            else:
+                item["collab_details"] = ""
+                item["total_work_hours"] = round(item.get("work_hours") or 0, 1)
+    else:
+        for item in items:
+            item["collab_details"] = ""
+            item["total_work_hours"] = round(item.get("work_hours") or 0, 1)
+
     return items, total
 
 
@@ -235,6 +277,8 @@ def reopen_request(db: "Session", request_id: int, user: "User") -> "Request":
     # 保留附件不删，清空路径（文件留存用于审计）
     req.attachment_path = None
     req.updated_at = now_beijing()
+    # 清除协作者记录（撤销完成后重新填写）
+    db.query(RequestCollaborator).filter(RequestCollaborator.request_id == request_id).delete()
     db.commit()
     db.refresh(req)
     return req

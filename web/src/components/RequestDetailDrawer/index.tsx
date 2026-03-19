@@ -85,6 +85,14 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
           <ProDescriptions.Item dataIndex="work_hours" label="预估工时(小时)" />
         )}
 
+        {!isFeed && request.collaborators && request.collaborators.length > 0 && (
+          <ProDescriptions.Item label="协作工时明细" span={2}>
+            {request.collaborators.map((c) => (
+              <Tag key={c.user_id}>{c.display_name}: {c.work_hours}h</Tag>
+            ))}
+          </ProDescriptions.Item>
+        )}
+
         <ProDescriptions.Item label="需求描述" span={2}>
           <Paragraph ellipsis={{ rows: 3, expandable: true, symbol: '展开' }}>
             {request.description || '-'}

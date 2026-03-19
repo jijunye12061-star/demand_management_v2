@@ -1,12 +1,13 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   PageContainer, ProTable, DrawerForm,
   ProFormText, ProFormTextArea, ProFormSelect, ProFormSwitch, ProFormDependency,
 } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { Tag, Popconfirm, Switch, Descriptions, App } from 'antd';
-import { getRequests, updateRequest, getResearchers, getSales, getOrganizations } from '@/services/api';
-import { deleteRequest, toggleConfidential } from '@/services/admin';
+import { Tag, Popconfirm, Switch, Descriptions, App, Form, Space, Button, Select, InputNumber } from 'antd';
+import { MinusCircleOutlined } from '@ant-design/icons';
+import { getRequests, updateRequest, getResearchers, getSales, getOrganizations, getRequestDetail } from '@/services/api';
+import { deleteRequest, toggleConfidential, updateRequestCollaborators } from '@/services/admin';
 import type { RequestItem, Organization } from '@/services/typings';
 import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 
@@ -16,6 +17,15 @@ const Requests: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<RequestItem | null>(null);
   const [orgList, setOrgList] = useState<Organization[]>([]);
+  const [researcherOptions, setResearcherOptions] = useState<{ label: string; value: number }[]>([]);
+  const [editForm] = Form.useForm();
+
+  // 一次性加载研究员选项
+  useEffect(() => {
+    getResearchers().then((list) =>
+      setResearcherOptions(list.map((r) => ({ label: r.display_name, value: r.id })))
+    ).catch(() => {});
+  }, []);
 
   const openEdit = async (record: RequestItem) => {
     if (!orgList.length) {
@@ -24,6 +34,14 @@ const Requests: React.FC = () => {
     }
     setEditingRecord(record);
     setDrawerVisible(true);
+    // 异步加载协作者，加载完后填入表单
+    try {
+      const full = await getRequestDetail(record.id);
+      editForm.setFieldValue('collaborators', (full.collaborators || []).map((c: any) => ({
+        user_id: c.user_id,
+        work_hours: c.work_hours,
+      })));
+    } catch {}
   };
 
   const columns: ProColumns<RequestItem>[] = [
@@ -101,14 +119,17 @@ const Requests: React.FC = () => {
 
       <DrawerForm
         title="编辑需求"
+        form={editForm}
         open={drawerVisible}
-        onOpenChange={(vis) => { if (!vis) setEditingRecord(null); setDrawerVisible(vis); }}
-        initialValues={editingRecord ? { ...editingRecord, is_confidential: !!editingRecord.is_confidential } : {}}
-        drawerProps={{ destroyOnClose: true, width: 600 }}
+        onOpenChange={(vis) => { if (!vis) { setEditingRecord(null); } setDrawerVisible(vis); }}
+        initialValues={editingRecord ? { ...editingRecord, is_confidential: !!editingRecord.is_confidential, collaborators: [] } : {}}
+        drawerProps={{ destroyOnClose: true, width: 640 }}
         onFinish={async (values) => {
           if (!editingRecord) return false;
           try {
-            await updateRequest(editingRecord.id, values);
+            const { collaborators, ...rest } = values;
+            await updateRequest(editingRecord.id, rest);
+            await updateRequestCollaborators(editingRecord.id, collaborators || []);
             message.success('更新成功');
             actionRef.current?.reload();
             return true;
@@ -169,6 +190,46 @@ const Requests: React.FC = () => {
         <ProFormSwitch name="is_confidential" label="保密" />
         <ProFormText name="work_hours" label="工时(h)" />
         <ProFormTextArea name="result_note" label="完成说明" />
+
+        {/* 协作者编辑 */}
+        <Form.Item label="协作研究员">
+          <Form.List name="collaborators">
+            {(fields, { add, remove }) => (
+              <>
+                {fields.map(({ key, name, ...restField }) => (
+                  <Space key={key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'user_id']}
+                      rules={[{ required: true, message: '请选择研究员' }]}
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Select
+                        placeholder="选择研究员"
+                        showSearch
+                        optionFilterProp="label"
+                        options={researcherOptions}
+                        style={{ width: 160 }}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'work_hours']}
+                      rules={[{ required: true, message: '请填工时' }]}
+                      style={{ marginBottom: 0 }}
+                    >
+                      <InputNumber min={0} step={0.5} precision={1} placeholder="工时(h)" style={{ width: 110 }} />
+                    </Form.Item>
+                    <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#ff4d4f' }} />
+                  </Space>
+                ))}
+                <Button type="dashed" onClick={() => add()} style={{ width: 280 }}>
+                  + 添加协作者
+                </Button>
+              </>
+            )}
+          </Form.List>
+        </Form.Item>
       </DrawerForm>
     </PageContainer>
   );

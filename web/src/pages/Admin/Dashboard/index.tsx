@@ -6,8 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { getStatsOverview, getResearcherRanking, getCharts } from '@/services/admin';
-import { getRequests } from '@/services/api';
+import { getStatsOverview, getResearcherRanking, getCharts, getResearcherAllRequests } from '@/services/admin';
 import type { RequestItem } from '@/services/typings';
 import { STATUS_ENUM } from '@/utils/constants';
 
@@ -59,10 +58,39 @@ const Dashboard: React.FC = () => {
   const rankColumns: ProColumns<any>[] = [
     { title: '排名', valueType: 'index', width: 60, render: (_, __, i) => <strong>{i + 1}</strong> },
     { title: '姓名', dataIndex: 'display_name' },
-    { title: '已完成', dataIndex: 'completed_count', sorter: (a: any, b: any) => a.completed_count - b.completed_count },
+    {
+      title: '已完成(含协作)',
+      dataIndex: 'total_completed',
+      sorter: (a: any, b: any) => (a.total_completed ?? 0) - (b.total_completed ?? 0),
+      render: (v: any, r: any) => (
+        <span>
+          {v ?? 0}
+          {r.collab_count > 0 && (
+            <span style={{ color: '#8c8c8c', fontSize: 12, marginLeft: 4 }}>
+              (含协作{r.collab_count}件)
+            </span>
+          )}
+        </span>
+      ),
+    },
     { title: '处理中', dataIndex: 'in_progress_count' },
     { title: '待处理', dataIndex: 'pending_count' },
-    { title: '总工时(h)', dataIndex: 'work_hours', sorter: (a: any, b: any) => (a.work_hours ?? 0) - (b.work_hours ?? 0), render: (v: any) => v?.toFixed(1) },  ];
+    {
+      title: '总工时(h)',
+      dataIndex: 'total_hours',
+      sorter: (a: any, b: any) => (a.total_hours ?? 0) - (b.total_hours ?? 0),
+      render: (v: any, r: any) => (
+        <span>
+          {v?.toFixed(1) ?? '0.0'}
+          {r.collab_hours > 0 && (
+            <span style={{ color: '#8c8c8c', fontSize: 12, marginLeft: 4 }}>
+              (含协作{r.collab_hours.toFixed(1)}h)
+            </span>
+          )}
+        </span>
+      ),
+    },
+  ];
 
   const detailColumns: ProColumns<RequestItem>[] = [
     { title: '标题', dataIndex: 'title', ellipsis: true },
@@ -77,15 +105,15 @@ const Dashboard: React.FC = () => {
   ];
 
   // ── 图表数据 ──
-  // 研究员工作量: 柱状图 (件数 + 工时)
+  // 研究员工作量: 柱状图 (件数 + 工时)，已完成和工时均含协作贡献
   const workloadBarData = [...ranking]
-    .sort((a, b) => b.work_hours - a.work_hours)  // 升序 → 横向柱状图从上到下=降序
+    .sort((a, b) => (b.total_hours ?? 0) - (a.total_hours ?? 0))
     .map((r) => ({
       name: r.display_name,
-      已完成: r.completed_count,
-      处理中: r.in_progress_count,
-      待处理: r.pending_count,
-      工时: r.work_hours,
+      已完成: (r.completed_count ?? 0) + (r.collab_count ?? 0),
+      处理中: r.in_progress_count ?? 0,
+      待处理: r.pending_count ?? 0,
+      工时: r.total_hours ?? 0,
     }));
 
   // 需求类型: 饼图
@@ -170,7 +198,10 @@ const Dashboard: React.FC = () => {
               search={false}
               options={false}
               pagination={{ pageSize: 10, size: 'small' }}
-              request={async (params) => getRequests({ researcher_id: record.user_id, current: params.current, pageSize: params.pageSize })}
+              request={async (params) => {
+                const res = await getResearcherAllRequests(record.user_id, params.current ?? 1, params.pageSize ?? 10);
+                return { data: res.items, total: res.total, success: true };
+              }}
               rowKey="id"
               size="small"
             />

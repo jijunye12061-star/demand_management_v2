@@ -1,12 +1,16 @@
+import json
 import shutil
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, status
 
 from app.core.config import settings
 from app.core.deps import DB, CurrentUser, AdminUser
 from app.models.request import Request
+from app.models.user import User
+from app.models.collaborator import RequestCollaborator
 from app.schemas.request import (
     RequestCreate, RequestUpdate, RequestResponse, RequestListParams,
     WithdrawRequest, ResubmitRequest, ReassignRequest, ConfidentialRequest,
+    CollaboratorsUpdate,
 )
 from app.services.request_service import (
     query_requests, accept_request, complete_request,
@@ -104,12 +108,36 @@ def feed_stats(
     }
 
 
-@router.get("/{request_id}", response_model=RequestResponse)
+@router.get("/{request_id}")
 def get_request(request_id: int, db: DB, user: CurrentUser):
     req = db.get(Request, request_id)
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
-    return req
+    result = {c.name: getattr(req, c.name) for c in req.__table__.columns}
+    # 追加协作者详情
+    collabs = (
+        db.query(
+            RequestCollaborator.user_id,
+            User.display_name,
+            RequestCollaborator.work_hours,
+        )
+        .join(User, RequestCollaborator.user_id == User.id)
+        .filter(RequestCollaborator.request_id == request_id)
+        .all()
+    )
+    result["collaborators"] = [
+        {"user_id": c.user_id, "display_name": c.display_name, "work_hours": c.work_hours}
+        for c in collabs
+    ]
+    # 拼接研究员名字（主负责人 + 协作者）
+    researcher = db.get(User, req.researcher_id)
+    base_name = researcher.display_name if researcher else None
+    if collabs:
+        collab_names = [c.display_name for c in collabs]
+        result["researcher_name"] = ", ".join(filter(None, [base_name] + collab_names))
+    else:
+        result["researcher_name"] = base_name
+    return result
 
 
 @router.post("")
@@ -207,6 +235,7 @@ async def complete(
     result_note: str = Form(None),
     work_hours: float = Form(None),
     attachment: UploadFile | None = File(None),
+    collaborators: str = Form(None),  # JSON: [{"user_id": 2, "work_hours": 3.0}, ...]
 ):
     attachment_path = None
     if attachment and attachment.filename:
@@ -222,6 +251,21 @@ async def complete(
         complete_request(db, request_id, user, result_note, work_hours, attachment_path)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+
+    # 保存协作者
+    if collaborators:
+        collab_list = json.loads(collaborators)
+        for c in collab_list:
+            if c.get("user_id") == user.id:
+                continue  # 过滤主负责人自己
+            db.add(RequestCollaborator(
+                request_id=request_id,
+                user_id=c["user_id"],
+                work_hours=c.get("work_hours", 0),
+                created_at=now_beijing(),
+            ))
+        db.commit()
+
     return {"message": "ok"}
 
 
@@ -291,4 +335,26 @@ def revoke(request_id: int, db: DB, user: CurrentUser):
         revoke_accept(db, request_id, user)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    return {"message": "ok"}
+
+
+@router.put("/{request_id}/collaborators")
+def update_collaborators(request_id: int, body: CollaboratorsUpdate, db: DB, admin: AdminUser):
+    """管理员全量替换协作者列表"""
+    req = db.get(Request, request_id)
+    if not req:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
+    # 清除旧协作者
+    db.query(RequestCollaborator).filter(RequestCollaborator.request_id == request_id).delete()
+    # 写入新协作者（过滤主负责人）
+    for c in body.collaborators:
+        if c.user_id == req.researcher_id:
+            continue
+        db.add(RequestCollaborator(
+            request_id=request_id,
+            user_id=c.user_id,
+            work_hours=c.work_hours,
+            created_at=now_beijing(),
+        ))
+    db.commit()
     return {"message": "ok"}

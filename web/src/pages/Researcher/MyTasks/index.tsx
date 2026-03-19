@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   PageContainer,
   ProTable,
@@ -15,11 +15,15 @@ import {
   Upload,
   Tabs,
   App,
+  Button,
+  Select,
+  Space,
 } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
 import {
   getRequests,
+  getResearchers,
   acceptRequest,
   completeRequest,
   withdrawRequest,
@@ -56,6 +60,19 @@ const MyTasks: React.FC = () => {
   const [completeForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const [fileList, setFileList] = useState<any[]>([]);
+  const [researcherOptions, setResearcherOptions] = useState<{ label: string; value: number }[]>([]);
+
+  useEffect(() => {
+    if (completeModalVisible) {
+      getResearchers().then((list) => {
+        setResearcherOptions(
+          list
+            .filter((u) => u.id !== currentUserId)
+            .map((u) => ({ label: u.display_name, value: u.id })),
+        );
+      });
+    }
+  }, [completeModalVisible]);
 
   const openDetail = (record: RequestItem) => {
     setCurrentRow(record);
@@ -113,6 +130,7 @@ const MyTasks: React.FC = () => {
         result_note: values.result_note,
         work_hours: values.work_hours,
         attachment: fileList[0]?.originFileObj,
+        collaborators: values.collaborators || [],
       });
       message.success('任务已完成');
       setCompleteModalVisible(false);
@@ -399,6 +417,46 @@ const MyTasks: React.FC = () => {
           >
             <InputNumber min={0} step={0.5} precision={1} style={{ width: '100%' }} placeholder="如 2.5" />
           </Form.Item>
+
+          {/* 协作研究员（可选） */}
+          <Form.List name="collaborators">
+            {(fields, { add, remove }) => (
+              <>
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ marginRight: 8 }}>协作研究员</span>
+                  <Button type="link" size="small" onClick={() => add()}>
+                    + 添加协作者
+                  </Button>
+                </div>
+                {fields.map(({ key, name, ...restField }) => (
+                  <Space key={key} align="baseline" style={{ display: 'flex', marginBottom: 8 }}>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'user_id']}
+                      rules={[{ required: true, message: '请选择研究员' }]}
+                    >
+                      <Select
+                        placeholder="选择研究员"
+                        showSearch
+                        optionFilterProp="label"
+                        options={researcherOptions}
+                        style={{ width: 160 }}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      {...restField}
+                      name={[name, 'work_hours']}
+                      rules={[{ required: true, message: '请填工时' }]}
+                    >
+                      <InputNumber min={0} step={0.5} precision={1} placeholder="工时" style={{ width: 100 }} />
+                    </Form.Item>
+                    <MinusCircleOutlined onClick={() => remove(name)} />
+                  </Space>
+                ))}
+              </>
+            )}
+          </Form.List>
+
           <Form.Item label="上传附件">
             <Upload
               beforeUpload={() => false}
