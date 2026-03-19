@@ -11,10 +11,12 @@ export const STATUS_ENUM: Record<string, { text: string; status: string }> = {
 // 需求类型选项
 export const REQUEST_TYPE_OPTIONS = [
   { label: '基金筛选', value: '基金筛选' },
-  { label: '传统报告定制', value: '传统报告定制' },
-  { label: '量化策略定制', value: '量化策略定制' },
-  { label: '系统定制', value: '系统定制' },
-  { label: '综合暂时兜底', value: '综合暂时兜底' },
+  { label: '报告定制', value: '报告定制' },
+  { label: '定期报告', value: '定期报告' },
+  { label: '调研', value: '调研' },
+  { label: '量化策略开发', value: '量化策略开发' },
+  { label: '工具/系统开发', value: '工具/系统开发' },
+  { label: '其他', value: '其他' },
 ];
 
 // 研究范围选项
@@ -24,7 +26,8 @@ export const RESEARCH_SCOPE_OPTIONS = [
   { label: '权益', value: '权益' },
   { label: '量化', value: '量化' },
   { label: '资产配置', value: '资产配置' },
-  { label: '其他', value: '其他' },
+  { label: '综合/行业', value: '综合/行业' },
+  { label: '不涉及', value: '不涉及' },
 ];
 
 // 机构类型与部门的级联映射字典

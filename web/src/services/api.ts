@@ -90,11 +90,14 @@ export async function withdrawRequest(id: number, reason: string) {
 
 export async function completeRequest(
   id: number,
-  data: { result_note?: string; work_hours?: number; attachment?: File; collaborators?: CollaboratorInput[] },
+  data: { result_note?: string; work_hours?: number; automation_hours?: number; attachment?: File; collaborators?: CollaboratorInput[] },
 ) {
   const formData = new FormData();
   if (data.result_note) formData.append('result_note', data.result_note);
   if (data.work_hours !== undefined) formData.append('work_hours', String(data.work_hours));
+  if (data.automation_hours !== undefined && data.automation_hours !== null) {
+    formData.append('automation_hours', String(data.automation_hours));
+  }
   if (data.attachment) formData.append('attachment', data.attachment);
   if (data.collaborators?.length) {
     formData.append('collaborators', JSON.stringify(data.collaborators));
@@ -105,6 +108,13 @@ export async function completeRequest(
     data: formData,
     requestType: 'form',
   });
+}
+
+export async function searchLinkableRequests(keyword: string, limit = 10) {
+  return request<{ id: number; title: string; researcher_name: string; completed_at?: string }[]>(
+    '/api/v1/requests/search-linkable',
+    { method: 'GET', params: { keyword, limit } },
+  );
 }
 
 export async function exportRequestsExcel(params: RequestListParams) {

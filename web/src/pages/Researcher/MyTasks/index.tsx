@@ -129,6 +129,7 @@ const MyTasks: React.FC = () => {
       await completeRequest(completingId!, {
         result_note: values.result_note,
         work_hours: values.work_hours,
+        automation_hours: values.automation_hours,
         attachment: fileList[0]?.originFileObj,
         collaborators: values.collaborators || [],
       });
@@ -405,6 +406,7 @@ const MyTasks: React.FC = () => {
         confirmLoading={submitting}
         okText="确认完成"
         destroyOnClose
+        width={640}
       >
         <Form form={completeForm} layout="vertical">
           <Form.Item name="result_note" label="处理说明">
@@ -412,10 +414,14 @@ const MyTasks: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="work_hours"
-            label="工时（小时）"
+            label="交付工时（小时）"
             rules={[{ required: true, message: '请填写工时' }]}
           >
             <InputNumber min={0} step={0.5} precision={1} style={{ width: '100%' }} placeholder="如 2.5" />
+          </Form.Item>
+          <Form.Item name="automation_hours" label="自动化建设工时（小时）">
+            <InputNumber min={0} step={0.5} precision={1} style={{ width: '100%' }}
+              placeholder="选填，如本次涉及自动化流程建设" />
           </Form.Item>
 
           {/* 协作研究员（可选） */}

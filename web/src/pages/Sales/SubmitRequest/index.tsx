@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   PageContainer,
   ProForm,
@@ -11,7 +11,7 @@ import {
 } from '@ant-design/pro-components';
 import { Form, Card, App } from 'antd';
 import { useNavigate } from '@umijs/max';
-import { getOrganizations, getResearchers, createRequest } from '@/services/api';
+import { getOrganizations, getResearchers, createRequest, searchLinkableRequests } from '@/services/api';
 import type { Organization } from '@/services/typings';
 import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
@@ -21,6 +21,22 @@ const SubmitRequest: React.FC = () => {
   const navigate = useNavigate();
   const [orgList, setOrgList] = useState<Organization[]>([]);
   const { modal, message } = App.useApp();
+  const [linkableOptions, setLinkableOptions] = useState<{ label: string; value: number }[]>([]);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleLinkableSearch = (keyword: string) => {
+    clearTimeout(searchTimerRef.current);
+    if (!keyword) { setLinkableOptions([]); return; }
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await searchLinkableRequests(keyword);
+        setLinkableOptions(result.map((r) => ({
+          label: `${r.title} | ${r.researcher_name || ''} | ${r.completed_at ? r.completed_at.slice(0, 10) : '进行中'}`,
+          value: r.id,
+        })));
+      } catch { setLinkableOptions([]); }
+    }, 300);
+  };
 
   const handleFinish = async (values: any) => {
     const payload = {
@@ -86,6 +102,13 @@ const SubmitRequest: React.FC = () => {
             options={REQUEST_TYPE_OPTIONS}
             rules={[{ required: true, message: '请选择需求类型' }]}
             colProps={{ span: 12 }}
+            fieldProps={{
+              onChange: (val: string) => {
+                if (val === '工具/系统开发') {
+                  form.setFieldsValue({ research_scope: '不涉及' });
+                }
+              },
+            }}
           />
           <ProFormSelect
             name="research_scope"
@@ -156,7 +179,22 @@ const SubmitRequest: React.FC = () => {
             tooltip="如使用到了机构的信息资料或机构明确提出保密需求请务必勾选"
           />
 
-          {/* 第五行：描述 */}
+          {/* 第五行：关联需求（选填） */}
+          <ProFormSelect
+            name="parent_request_id"
+            label="关联原始需求"
+            colProps={{ span: 24 }}
+            placeholder="输入关键词搜索需求标题（选填）"
+            fieldProps={{
+              showSearch: true,
+              filterOption: false,
+              options: linkableOptions,
+              onSearch: handleLinkableSearch,
+              allowClear: true,
+            }}
+          />
+
+          {/* 第六行：描述 */}
           <ProFormTextArea
             name="description"
             label="需求描述"

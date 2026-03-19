@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   PageContainer, ProTable, DrawerForm,
   ProFormText, ProFormTextArea, ProFormSelect, ProFormSwitch, ProFormDependency,
@@ -6,7 +6,7 @@ import {
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Tag, Popconfirm, Switch, Descriptions, App, Form, Space, Button, Select, InputNumber } from 'antd';
 import { MinusCircleOutlined } from '@ant-design/icons';
-import { getRequests, updateRequest, getResearchers, getSales, getOrganizations, getRequestDetail } from '@/services/api';
+import { getRequests, updateRequest, getResearchers, getSales, getOrganizations, getRequestDetail, searchLinkableRequests } from '@/services/api';
 import { deleteRequest, toggleConfidential, updateRequestCollaborators } from '@/services/admin';
 import type { RequestItem, Organization } from '@/services/typings';
 import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
@@ -18,7 +18,23 @@ const Requests: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<RequestItem | null>(null);
   const [orgList, setOrgList] = useState<Organization[]>([]);
   const [researcherOptions, setResearcherOptions] = useState<{ label: string; value: number }[]>([]);
+  const [linkableOptions, setLinkableOptions] = useState<{ label: string; value: number }[]>([]);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const [editForm] = Form.useForm();
+
+  const handleLinkableSearch = useCallback((keyword: string) => {
+    clearTimeout(searchTimerRef.current);
+    if (!keyword) { setLinkableOptions([]); return; }
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await searchLinkableRequests(keyword);
+        setLinkableOptions(result.map((r) => ({
+          label: `${r.title} | ${r.researcher_name || ''} | ${r.completed_at ? r.completed_at.slice(0, 10) : '进行中'}`,
+          value: r.id,
+        })));
+      } catch { setLinkableOptions([]); }
+    }, 300);
+  }, []);
 
   // 一次性加载研究员选项
   useEffect(() => {
@@ -34,13 +50,17 @@ const Requests: React.FC = () => {
     }
     setEditingRecord(record);
     setDrawerVisible(true);
-    // 异步加载协作者，加载完后填入表单
+    // 异步加载协作者和关联需求，加载完后填入表单
     try {
       const full = await getRequestDetail(record.id);
       editForm.setFieldValue('collaborators', (full.collaborators || []).map((c: any) => ({
         user_id: c.user_id,
         work_hours: c.work_hours,
       })));
+      // 若有关联需求，预填选项
+      if (full.parent_request_id && full.parent_title) {
+        setLinkableOptions([{ label: full.parent_title, value: full.parent_request_id }]);
+      }
     } catch {}
   };
 
@@ -188,7 +208,20 @@ const Requests: React.FC = () => {
           options={Object.entries(STATUS_ENUM).map(([k, v]) => ({ label: v.text, value: k }))}
         />
         <ProFormSwitch name="is_confidential" label="保密" />
-        <ProFormText name="work_hours" label="工时(h)" />
+        <ProFormText name="work_hours" label="交付工时(h)" />
+        <ProFormText name="automation_hours" label="自动化建设工时(h)" />
+        <ProFormSelect
+          name="parent_request_id"
+          label="关联原始需求"
+          placeholder="输入关键词搜索（选填）"
+          fieldProps={{
+            showSearch: true,
+            filterOption: false,
+            options: linkableOptions,
+            onSearch: handleLinkableSearch,
+            allowClear: true,
+          }}
+        />
         <ProFormTextArea name="result_note" label="完成说明" />
 
         {/* 协作者编辑 */}

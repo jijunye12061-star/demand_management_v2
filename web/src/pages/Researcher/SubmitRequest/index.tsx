@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   PageContainer,
   ProForm,
@@ -9,9 +9,9 @@ import {
   ProFormDateTimePicker,
   ProFormDependency,
 } from '@ant-design/pro-components';
-import { App, Form, Card } from 'antd';
+import { Alert, App, Form, Card } from 'antd';
 import { useModel, useNavigate } from '@umijs/max';
-import { getOrganizations, getResearchers, getSales, createRequest } from '@/services/api';
+import { getOrganizations, getResearchers, getSales, createRequest, searchLinkableRequests } from '@/services/api';
 import type { Organization, SalesUser } from '@/services/typings';
 import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
@@ -27,6 +27,22 @@ const SubmitRequest: React.FC = () => {
   const [salesList, setSalesList] = useState<SalesUser[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [isAdminSales, setIsAdminSales] = useState(false);
+  const [linkableOptions, setLinkableOptions] = useState<{ label: string; value: number }[]>([]);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleLinkableSearch = (keyword: string) => {
+    clearTimeout(searchTimerRef.current);
+    if (!keyword) { setLinkableOptions([]); return; }
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await searchLinkableRequests(keyword);
+        setLinkableOptions(result.map((r) => ({
+          label: `${r.title} | ${r.researcher_name || ''} | ${r.completed_at ? r.completed_at.slice(0, 10) : '进行中'}`,
+          value: r.id,
+        })));
+      } catch { setLinkableOptions([]); }
+    }, 300);
+  };
 
   const handleFinish = async (values: any) => {
     const payload = {
@@ -144,6 +160,13 @@ const SubmitRequest: React.FC = () => {
             colProps={{ span: 12 }}
             options={REQUEST_TYPE_OPTIONS}
             rules={[{ required: true, message: '请选择需求类型' }]}
+            fieldProps={{
+              onChange: (val: string) => {
+                if (val === '工具/系统开发') {
+                  form.setFieldsValue({ research_scope: '不涉及' });
+                }
+              },
+            }}
           />
           <ProFormSelect
             name="research_scope"
@@ -153,81 +176,126 @@ const SubmitRequest: React.FC = () => {
             placeholder="请选择研究范围"
           />
 
-          <ProFormSelect
-            name="sales_id"
-            label="代提销售"
-            colProps={{ span: 12 }}
-            rules={[{ required: true, message: '请选择代提的销售' }]}
-            request={async () => {
-              const data = await getSales();
-              setSalesList(data);
-              return data.map((u) => ({ label: u.display_name, value: u.id }));
-            }}
-            fieldProps={{
-              showSearch: true,
-              onChange: (value: number) => handleSalesChange(value),
-            }}
-            tooltip="选择为哪位销售代提需求，机构列表将根据该销售所在团队加载"
-          />
-          <ProFormSelect
-            name="researcher_id"
-            label="指定研究员"
-            colProps={{ span: 12 }}
-            rules={[{ required: true, message: '请选择研究员' }]}
-            request={async () => {
-              const data = await getResearchers();
-              return data.map((u) => ({ label: u.display_name, value: u.id }));
-            }}
-            fieldProps={{ showSearch: true }}
-          />
-
-          <ProFormSelect
-            name="org_name"
-            label="目标机构"
-            colProps={{ span: 12 }}
-            rules={[{ required: true, message: '请选择目标机构' }]}
-            options={orgOptions}
-            fieldProps={{
-              showSearch: true,
-              disabled: !isAdminSales && !selectedTeamId,
-              placeholder: (isAdminSales || selectedTeamId)
-                ? '请选择目标机构'
-                : '请先选择代提销售',
-              onChange: (value: string) => {
-                if (value === '内部需求') {
-                  form.setFieldsValue({ org_type: '内部', department: undefined });
-                } else {
-                  const selected = orgList.find((org) => org.name === value);
-                  if (selected) {
-                    form.setFieldsValue({ org_type: selected.org_type, department: undefined });
-                  }
-                }
-              },
-            }}
-          />
-          <ProFormText
-            name="org_type"
-            label="机构类型"
-            colProps={{ span: 12 }}
-            readonly
-            placeholder="选择机构后自动带入"
-          />
-
-          <ProFormDependency name={['org_type']}>
-            {({ org_type }) => {
-              const departments = org_type ? ORG_DEPARTMENT_MAP[org_type] : [];
-              if (!departments?.length) return null;
+          <ProFormDependency name={['request_type']}>
+            {({ request_type }) => {
+              const isFieldResearch = request_type === '调研';
               return (
-                <ProFormSelect
-                  name="department"
-                  label="对接部门"
-                  colProps={{ span: 12 }}
-                  options={departments.map((d: string) => ({ label: d, value: d }))}
-                  rules={[{ required: true, message: '请选择对接部门' }]}
-                />
+                <>
+                  {isFieldResearch && (
+                    <Alert
+                      style={{ marginBottom: 16, width: '100%' }}
+                      type="info"
+                      showIcon
+                      message="调研模式：记录您的实地/线上调研成果，完成后将出现在需求动态供全员浏览。"
+                    />
+                  )}
+
+                  {!isFieldResearch && (
+                    <ProFormSelect
+                      name="sales_id"
+                      label="代提销售"
+                      colProps={{ span: 12 }}
+                      rules={[{ required: true, message: '请选择代提的销售' }]}
+                      request={async () => {
+                        const data = await getSales();
+                        setSalesList(data);
+                        return data.map((u) => ({ label: u.display_name, value: u.id }));
+                      }}
+                      fieldProps={{
+                        showSearch: true,
+                        onChange: (value: number) => handleSalesChange(value),
+                      }}
+                      tooltip="选择为哪位销售代提需求，机构列表将根据该销售所在团队加载"
+                    />
+                  )}
+
+                  <ProFormSelect
+                    name="researcher_id"
+                    label="指定研究员"
+                    colProps={{ span: 12 }}
+                    rules={[{ required: true, message: '请选择研究员' }]}
+                    request={async () => {
+                      const data = await getResearchers();
+                      return data.map((u) => ({ label: u.display_name, value: u.id }));
+                    }}
+                    fieldProps={{ showSearch: true }}
+                  />
+
+                  {isFieldResearch ? (
+                    <ProFormText
+                      name="org_name"
+                      label="调研对象"
+                      colProps={{ span: 12 }}
+                      placeholder={'请输入调研对象（如基金公司名称），留空则默认为"内部调研"'}
+                    />
+                  ) : (
+                    <>
+                      <ProFormSelect
+                        name="org_name"
+                        label="目标机构"
+                        colProps={{ span: 12 }}
+                        rules={[{ required: true, message: '请选择目标机构' }]}
+                        options={orgOptions}
+                        fieldProps={{
+                          showSearch: true,
+                          disabled: !isAdminSales && !selectedTeamId,
+                          placeholder: (isAdminSales || selectedTeamId)
+                            ? '请选择目标机构'
+                            : '请先选择代提销售',
+                          onChange: (value: string) => {
+                            if (value === '内部需求') {
+                              form.setFieldsValue({ org_type: '内部', department: undefined });
+                            } else {
+                              const selected = orgList.find((org) => org.name === value);
+                              if (selected) {
+                                form.setFieldsValue({ org_type: selected.org_type, department: undefined });
+                              }
+                            }
+                          },
+                        }}
+                      />
+                      <ProFormText
+                        name="org_type"
+                        label="机构类型"
+                        colProps={{ span: 12 }}
+                        readonly
+                        placeholder="选择机构后自动带入"
+                      />
+                      <ProFormDependency name={['org_type']}>
+                        {({ org_type: ot }) => {
+                          const departments = ot ? ORG_DEPARTMENT_MAP[ot] : [];
+                          if (!departments?.length) return null;
+                          return (
+                            <ProFormSelect
+                              name="department"
+                              label="对接部门"
+                              colProps={{ span: 12 }}
+                              options={departments.map((d: string) => ({ label: d, value: d }))}
+                              rules={[{ required: true, message: '请选择对接部门' }]}
+                            />
+                          );
+                        }}
+                      </ProFormDependency>
+                    </>
+                  )}
+                </>
               );
             }}
           </ProFormDependency>
+
+          <ProFormSelect
+            name="parent_request_id"
+            label="关联原始需求"
+            colProps={{ span: 24 }}
+            placeholder="输入关键词搜索需求标题（选填）"
+            fieldProps={{
+              showSearch: true,
+              filterOption: false,
+              options: linkableOptions,
+              onSearch: handleLinkableSearch,
+              allowClear: true,
+            }}
+          />
 
           <ProFormSwitch
             name="is_confidential"

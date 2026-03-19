@@ -51,7 +51,12 @@ export interface RequestItem {
   researcher_name?: string;
   download_count?: number;
   withdraw_reason?: string;
+  is_self_initiated?: boolean;
   collaborators?: CollaboratorDetail[];
+  automation_hours?: number;
+  parent_request_id?: number;
+  parent_title?: string;
+  children?: { id: number; title: string; status: string; work_hours?: number; completed_at?: string }[];
 }
 
 export interface RequestListParams {
