@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+*.stackdump
+.DS_Store
+Thumbs.db
+
+# 数据与上传（不入库）
+server/data/
+
+# 前端构建产物
+web/dist/
+web/node_modules/
+
+# Claude Code 工作文件（过程产物，不入库）
+.claude/
