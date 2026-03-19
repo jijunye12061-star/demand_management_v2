@@ -16,6 +16,7 @@ users ─┬─ 1:N ─── requests (sales_id)
 teams ──── N:N ─── organizations (via team_org_mapping)
 
 requests ── 1:N ─── download_logs (request_id)
+requests ── 1:N ─── requests (parent_request_id, 自引用: 原始→衍生)
 ```
 
 ---
@@ -192,11 +193,11 @@ CREATE INDEX IF NOT EXISTS idx_dl_time ON download_logs(downloaded_at);
 # 需求类型 (当前值)
 # 历史改名: 传统报告定制→报告定制, 量化策略定制→量化策略开发, 系统定制→工具/系统开发,
 #           综合暂时兜底→其他, 外出调研→调研
-REQUEST_TYPES = ["基金筛选", "报告定制", "量化策略开发", "工具/系统开发", "调研", "其他"]
+REQUEST_TYPES = ["基金筛选", "报告定制", "定期报告", "调研", "量化策略开发", "工具/系统开发", "其他"]
 
 # 研究范畴 (当前值)
-# 历史改名: 其他→综合/行业
-RESEARCH_SCOPES = ["纯债", "固收+", "权益", "量化", "资产配置", "综合/行业"]
+# 历史改名: 其他→综合/行业; 新增: 不涉及 (工具/系统开发类使用)
+RESEARCH_SCOPES = ["纯债", "固收+", "权益", "量化", "资产配置", "综合/行业", "不涉及"]
 
 # 客户类型
 ORG_TYPES = ["银行", "券商", "保险", "理财", "FOF", "信托", "私募", "期货", "其他"]

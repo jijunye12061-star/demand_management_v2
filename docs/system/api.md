@@ -79,6 +79,16 @@ Response: { "items": [RequestItem], "total": int }
 
 需求详情 (含下载统计)。
 
+响应额外字段:
+```
+"automation_hours": float?,        // 自动化建设工时
+"parent_request_id": int?,         // 关联原始需求 ID
+"parent_title": "str?",            // 原始需求标题 (JOIN 查询)
+"children": [                      // 衍生需求列表
+  { "id": int, "title": "str", "status": "str", "work_hours": float?, "completed_at": "str?" }
+]
+```
+
 ### POST `/requests`
 
 提交需求。
@@ -95,7 +105,8 @@ Request: {
   "researcher_id": int,
   "is_confidential": bool?,
   "created_at": "datetime?",       // 支持回溯
-  "sales_id": int?                  // 研究员代提时必填
+  "sales_id": int?,                // 研究员代提时必填
+  "parent_request_id": int?        // 关联原始需求 ID (可选); 目标须存在且非 deleted
 }
 ```
 
@@ -107,7 +118,7 @@ Request: {
 
 - admin: 可编辑任意需求的任意字段
 - sales: 仅可编辑自己创建的 `pending`/`withdrawn` 状态需求, 可编辑字段:
-  title, description, request_type, research_scope, org_name, org_type, department, researcher_id, is_confidential
+  title, description, request_type, research_scope, org_name, org_type, department, researcher_id, is_confidential, parent_request_id
 
 ```
 Request: { ...可编辑字段 }
@@ -132,7 +143,8 @@ Request: { ...可编辑字段 }
 ```
 Request (multipart/form-data): {
   "result_note": "str?",
-  "work_hours": float?,
+  "work_hours": float?,            // 交付工时
+  "automation_hours": float?,      // 自动化建设工时 (可选, ≥0)
   "attachment": File?
 }
 ```
@@ -192,6 +204,20 @@ Request: { "researcher_id": int }
 Request: { "is_confidential": bool }
 权限: admin
 ```
+
+### GET `/requests/search-linkable`
+
+关联需求搜索（供"关联需求"下拉框使用）。
+
+```
+参数: keyword (str), limit (int, 默认10)
+过滤: status IN ('completed', 'in_progress') AND status != 'deleted'
+排序: completed_at DESC, created_at DESC
+权限: 所有已登录角色
+Response: [{ "id": int, "title": "str", "researcher_name": "str", "completed_at": "str?" }]
+```
+
+> ⚠️ 此路由必须注册在 `/{request_id}` 之前，否则会被动态路由拦截。
 
 ---
 
@@ -354,7 +380,17 @@ Response: { "total": int, "pending": int, "in_progress": int, "completed": int, 
 
 ```
 参数: period
-Response: [{ "user_id": int, "display_name": "str", "completed_count": int, "work_hours": float, "pending_count": int, "in_progress_count": int }]
+Response: [{
+  "user_id": int, "display_name": "str",
+  "completed_count": int,          // 主负责完成件数
+  "work_hours": float,             // 交付工时
+  "automation_hours": float,       // 自动化建设工时
+  "pending_count": int, "in_progress_count": int,
+  "collab_count": int,             // 协作完成件数
+  "collab_hours": float,           // 协作工时
+  "total_hours": float,            // work_hours + automation_hours + collab_hours
+  "total_completed": int           // completed_count + collab_count
+}]
 ```
 
 ### GET `/stats/researcher-matrix`
@@ -434,6 +470,8 @@ Response: {
 **权限与字段**:
 
 - admin: 全字段导出, 参数同 `GET /requests` 的筛选参数
+  列: ID, 标题, 描述, 需求类型, 研究范畴, 机构, 客户类型, 部门, 销售, 研究员, 状态,
+      工时(h), 自动化建设工时(h), **总工时(h)**, 关联需求ID, 创建时间, 完成时间, 下载次数
 - sales/researcher: 仅导出 feed 可见的公开数据, 且仅包含展示字段 (title, description, request_type, research_scope,
   org_type, researcher_name, completed_at)
 

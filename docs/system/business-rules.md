@@ -65,7 +65,9 @@ admin 同时具备研究员和销售身份:
 
 ### 2.2 "需求动态" 模式 (scope=feed)
 
-**基础条件**: `status = 'completed'` AND `is_confidential = 0`
+**基础条件**: `status = 'completed'` AND `is_confidential = 0` AND `request_type != '工具/系统开发'`
+
+> `工具/系统开发` 属内部基建，不面向客户展示，硬编码排除。
 
 所有角色看到的内容一致 — 已完成的公开需求。
 
@@ -110,6 +112,7 @@ in_progress → completed      (研究员 complete)
 
 - 前置: `status = 'in_progress'` AND `researcher_id = current_user.id`
 - 动作: `status → 'completed'`, `completed_at = now()`, 保存附件/说明/工时
+- 可选字段: `work_hours`（交付工时）、`automation_hours`（自动化建设工时，独立记录）
 
 ### 3.3 退回 (withdraw)
 
@@ -135,7 +138,7 @@ in_progress → completed      (研究员 complete)
 
 - 前置: `status IN ('pending', 'withdrawn')` AND (`sales_id = current_user.id` OR `created_by = current_user.id`)
 - 可编辑字段: title, description, request_type, research_scope, org_name, org_type, department, researcher_id,
-  is_confidential
+  is_confidential, parent_request_id
 - 动作: 更新字段, `updated_at = now()`
 - 注意: 编辑不改变状态。若为 withdrawn 状态需要重回 pending, 应使用 resubmit。
 
@@ -174,6 +177,22 @@ org_type 变化时:
 - 单位: 小时, 精度 1 位小数
 - 仅 `completed` 状态的需求计入统计
 - 按 `completed_at` 时间归属到对应统计周期 (非 created_at)
+- **总工时 = `work_hours`（交付工时）+ `automation_hours`（自动化建设工时）+ 协作者工时之和**
+- `automation_hours` 为可选，未填时视为 0，不影响普通需求统计
+
+## 6.1 自动化工时体系
+
+研究员首次建设自动化流程时，`automation_hours` 记录建设投入；后续基于该流程产出的需求通过 `parent_request_id` 关联原始需求，形成"原始→衍生"链，用于量化自动化投入回报。
+
+**推导规则（前端展示"自动化"标签）**:
+```
+显示自动化标签 = automation_hours > 0 OR parent_request_id IS NOT NULL
+```
+
+**关联约束**:
+- 单亲: 一个需求最多一个 `parent_request_id`
+- 循环引用校验: 沿 parent 链向上最多 10 层, 不得回到自身
+- 关联搜索范围: `status IN ('completed', 'in_progress')` 的需求
 
 ---
 
