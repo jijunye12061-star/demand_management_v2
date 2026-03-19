@@ -67,6 +67,7 @@ def feed_stats(
     q = db.query(Request).filter(
         Request.status == "completed",
         Request.is_confidential == 0,
+        Request.request_type != "工具/系统开发",
     )
     if request_type:
         q = q.filter(Request.request_type == request_type)
@@ -108,6 +109,39 @@ def feed_stats(
     }
 
 
+@router.get("/search-linkable")
+def search_linkable(
+    db: DB, user: CurrentUser,
+    keyword: str = "",
+    limit: int = 10,
+):
+    """关联需求搜索：返回 completed/in_progress 的需求供选择"""
+    q = (
+        db.query(Request, User.display_name.label("researcher_name"))
+        .outerjoin(User, Request.researcher_id == User.id)
+        .filter(
+            Request.status.in_(["completed", "in_progress"]),
+            Request.status != "deleted",
+        )
+    )
+    if keyword:
+        q = q.filter(Request.title.like(f"%{keyword}%"))
+    rows = (
+        q.order_by(Request.completed_at.desc(), Request.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": req.id,
+            "title": req.title,
+            "researcher_name": r_name,
+            "completed_at": req.completed_at,
+        }
+        for req, r_name in rows
+    ]
+
+
 @router.get("/{request_id}")
 def get_request(request_id: int, db: DB, user: CurrentUser):
     req = db.get(Request, request_id)
@@ -137,31 +171,90 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
         result["researcher_name"] = ", ".join(filter(None, [base_name] + collab_names))
     else:
         result["researcher_name"] = base_name
+    # 关联原始需求标题
+    if req.parent_request_id:
+        parent = db.get(Request, req.parent_request_id)
+        result["parent_title"] = parent.title if parent else None
+    else:
+        result["parent_title"] = None
+    # 衍生需求列表
+    children = (
+        db.query(Request)
+        .filter(Request.parent_request_id == request_id, Request.status != "deleted")
+        .order_by(Request.created_at.desc())
+        .all()
+    )
+    result["children"] = [
+        {
+            "id": c.id,
+            "title": c.title,
+            "status": c.status,
+            "work_hours": c.work_hours,
+            "completed_at": c.completed_at,
+        }
+        for c in children
+    ]
     return result
 
 
 @router.post("")
 def create(body: RequestCreate, db: DB, user: CurrentUser):
+    if body.request_type == "调研":
+        is_self_initiated = 1
+        org_name = body.org_name or "内部调研"
+        org_type = body.org_type
+        department = body.department
+    else:
+        if not body.org_name:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "org_name 必填")
+        is_self_initiated = 0
+        org_name = body.org_name
+        org_type = body.org_type
+        department = body.department
+
+    # 校验 parent_request_id
+    if body.parent_request_id is not None:
+        parent = db.get(Request, body.parent_request_id)
+        if not parent or parent.status == "deleted":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "关联的原始需求不存在")
+
     req = Request(
         title=body.title,
         description=body.description,
         request_type=body.request_type,
         research_scope=body.research_scope,
-        org_name=body.org_name,
-        org_type=body.org_type,
-        department=body.department,
+        org_name=org_name,
+        org_type=org_type,
+        department=department,
         researcher_id=body.researcher_id,
         is_confidential=1 if body.is_confidential else 0,
+        is_self_initiated=is_self_initiated,
         sales_id=body.sales_id if body.sales_id else user.id,
         created_by=user.id,
         created_at=body.created_at or now_beijing(),
         updated_at=now_beijing(),
         status="pending",
+        parent_request_id=body.parent_request_id,
     )
     db.add(req)
     db.commit()
     db.refresh(req)
     return {"id": req.id}
+
+
+def _check_parent_loop(db, request_id: int, new_parent_id: int, max_depth: int = 10) -> bool:
+    """沿 parent 链向上追溯，检查是否会产生循环引用。返回 True 表示有循环。"""
+    current_id = new_parent_id
+    for _ in range(max_depth):
+        if current_id is None:
+            return False
+        if current_id == request_id:
+            return True
+        parent = db.get(Request, current_id)
+        if not parent:
+            return False
+        current_id = parent.parent_request_id
+    return False
 
 
 # ── FIX #2: PUT 权限 — admin 全字段编辑 + sales 编辑自己的 pending/withdrawn ──
@@ -172,9 +265,20 @@ def update(request_id: int, body: RequestUpdate, db: DB, user: CurrentUser):
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
 
+    updates = body.model_dump(exclude_unset=True)
+
+    # 校验 parent_request_id（有提供时）
+    if "parent_request_id" in updates and updates["parent_request_id"] is not None:
+        new_parent_id = updates["parent_request_id"]
+        parent = db.get(Request, new_parent_id)
+        if not parent or parent.status == "deleted":
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "关联的原始需求不存在")
+        if _check_parent_loop(db, request_id, new_parent_id):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "关联需求存在循环引用")
+
     # admin: 可编辑任意需求的任意字段
     if user.role == "admin":
-        for k, v in body.model_dump(exclude_unset=True).items():
+        for k, v in updates.items():
             if k == "is_confidential" and v is not None:
                 setattr(req, k, 1 if v else 0)
             else:
@@ -192,8 +296,9 @@ def update(request_id: int, body: RequestUpdate, db: DB, user: CurrentUser):
         sales_editable = {
             "title", "description", "request_type", "research_scope",
             "org_name", "org_type", "department", "researcher_id", "is_confidential",
+            "parent_request_id",
         }
-        for k, v in body.model_dump(exclude_unset=True).items():
+        for k, v in updates.items():
             if k not in sales_editable:
                 continue
             if k == "is_confidential" and v is not None:
@@ -234,6 +339,7 @@ async def complete(
     request_id: int, db: DB, user: CurrentUser,
     result_note: str = Form(None),
     work_hours: float = Form(None),
+    automation_hours: float = Form(None),
     attachment: UploadFile | None = File(None),
     collaborators: str = Form(None),  # JSON: [{"user_id": 2, "work_hours": 3.0}, ...]
 ):
@@ -248,7 +354,7 @@ async def complete(
         attachment_path = f"uploads/{request_id}/{attachment.filename}"
 
     try:
-        complete_request(db, request_id, user, result_note, work_hours, attachment_path)
+        complete_request(db, request_id, user, result_note, work_hours, attachment_path, automation_hours)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
 

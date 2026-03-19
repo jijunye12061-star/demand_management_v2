@@ -23,6 +23,9 @@ class Request(Base):
     attachment_path: Mapped[str | None] = mapped_column(Text)
     work_hours: Mapped[float] = mapped_column(Float, default=0)
     withdraw_reason: Mapped[str | None] = mapped_column(Text)  # 研究员退回原因
+    is_self_initiated: Mapped[int] = mapped_column(Integer, default=0)  # 研究员自发需求标记
+    automation_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    parent_request_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("requests.id"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)

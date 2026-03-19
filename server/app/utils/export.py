@@ -19,6 +19,8 @@ FULL_COLUMNS = [
     ("研究员", "researcher_name", 12),
     ("状态", "status", 10),
     ("工时(h)", "work_hours", 10),
+    ("自动化建设工时(h)", "automation_hours", 14),
+    ("关联需求ID", "parent_request_id", 12),
     ("创建时间", "created_at", 18),
     ("完成时间", "completed_at", 18),
     ("下载次数", "download_count", 10),

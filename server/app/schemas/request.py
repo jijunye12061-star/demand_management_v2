@@ -6,13 +6,15 @@ class RequestCreate(BaseModel):
     description: str | None = None
     request_type: str
     research_scope: str | None = None
-    org_name: str
+    org_name: str | None = None
     org_type: str | None = None
     department: str | None = None
     researcher_id: int
     is_confidential: bool = False
+    is_self_initiated: bool = False
     created_at: str | None = None
     sales_id: int | None = None  # 研究员代提时必填
+    parent_request_id: int | None = None
 
 
 class RequestUpdate(BaseModel):
@@ -29,6 +31,7 @@ class RequestUpdate(BaseModel):
     status: str | None = None
     result_note: str | None = None
     work_hours: float | None = None
+    parent_request_id: int | None = None
 
 
 class RequestResponse(BaseModel):
@@ -48,14 +51,19 @@ class RequestResponse(BaseModel):
     attachment_path: str | None = None
     work_hours: float = 0
     withdraw_reason: str | None = None
+    is_self_initiated: int = 0
     created_by: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
     completed_at: str | None = None
+    automation_hours: float | None = None
+    parent_request_id: int | None = None
     # joined fields
     sales_name: str | None = None
     researcher_name: str | None = None
     download_count: int = 0
+    parent_title: str | None = None
+    children: list[dict] | None = None
 
     model_config = {"from_attributes": True}
 

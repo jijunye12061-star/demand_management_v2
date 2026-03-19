@@ -27,7 +27,11 @@ def _confidential_filter(user: User):
 def _scope_filter(user: User, scope: str | None):
     """mine/feed scope visibility rules"""
     if scope == "feed":
-        return and_(Request.status == "completed", Request.is_confidential == 0)
+        return and_(
+            Request.status == "completed",
+            Request.is_confidential == 0,
+            Request.request_type != "工具/系统开发",
+        )
 
     # scope=mine (default) — 排除 canceled 和 deleted
     visible = Request.status.not_in(("canceled", "deleted"))
@@ -189,6 +193,7 @@ def complete_request(
     result_note: str | None = None,
     work_hours: float | None = None,
     attachment_path: str | None = None,
+    automation_hours: float | None = None,
 ) -> Request:
     req = db.get(Request, request_id)
     if not req:
@@ -204,6 +209,8 @@ def complete_request(
         req.work_hours = work_hours
     if attachment_path:
         req.attachment_path = attachment_path
+    if automation_hours is not None:
+        req.automation_hours = automation_hours
     db.commit()
     db.refresh(req)
     return req
