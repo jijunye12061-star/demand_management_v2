@@ -27,13 +27,15 @@ requests ── 1:N ─── download_logs (request_id)
 ```sql
 CREATE TABLE users
 (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    username     TEXT NOT NULL UNIQUE,
-    password     TEXT NOT NULL, -- 现有 SHA256, 新用户用 bcrypt
-    role         TEXT NOT NULL, -- sales | researcher | admin
-    display_name TEXT NOT NULL,
-    team_id      INTEGER REFERENCES teams (id),
-    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    username         TEXT    NOT NULL UNIQUE,
+    password         TEXT    NOT NULL,          -- SHA256 (legacy) 或 bcrypt
+    role             TEXT    NOT NULL,          -- sales | researcher | admin
+    display_name     TEXT    NOT NULL,
+    team_id          INTEGER REFERENCES teams (id),
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    password_version INTEGER   DEFAULT 1,       -- 1=SHA256, 2=bcrypt
+    is_deleted       INTEGER   DEFAULT 0
 );
 ```
 
@@ -42,25 +44,29 @@ CREATE TABLE users
 ```sql
 CREATE TABLE requests
 (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    title           TEXT    NOT NULL,
-    description     TEXT,
-    request_type    TEXT    NOT NULL,
-    research_scope  TEXT,
-    org_name        TEXT    NOT NULL,
-    org_type        TEXT,
-    department      TEXT,
-    sales_id        INTEGER NOT NULL REFERENCES users (id),
-    researcher_id   INTEGER REFERENCES users (id),
-    is_confidential INTEGER   DEFAULT 0,
-    status          TEXT      DEFAULT 'pending', -- pending | in_progress | completed | withdrawn | canceled
-    result_note     TEXT,
-    attachment_path TEXT,
-    work_hours      REAL      DEFAULT 0,
-    created_by      INTEGER REFERENCES users (id),
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP,
-    completed_at    TIMESTAMP
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    title              TEXT    NOT NULL,
+    description        TEXT,
+    request_type       TEXT    NOT NULL,
+    research_scope     TEXT,
+    org_name           TEXT    NOT NULL,
+    org_type           TEXT,
+    department         TEXT,
+    sales_id           INTEGER NOT NULL REFERENCES users (id),
+    researcher_id      INTEGER REFERENCES users (id),
+    is_confidential    INTEGER   DEFAULT 0,
+    status             TEXT      DEFAULT 'pending', -- pending | in_progress | completed | withdrawn | canceled | deleted
+    result_note        TEXT,
+    attachment_path    TEXT,                    -- 格式: uploads/{request_id}/filename
+    work_hours         REAL      DEFAULT 0,
+    created_by         INTEGER REFERENCES users (id),
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP,
+    completed_at       TIMESTAMP,
+    withdraw_reason    TEXT,                    -- 研究员退回时必填，重新提交后清空
+    is_self_initiated  INTEGER   DEFAULT 0,     -- 1=外出调研/研究员自主发起
+    automation_hours   REAL      DEFAULT NULL,  -- 自动化工时（CA功能）
+    parent_request_id  INTEGER   DEFAULT NULL REFERENCES requests (id)  -- 拆单来源
 );
 ```
 
@@ -71,7 +77,8 @@ CREATE TABLE teams
 (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_deleted INTEGER DEFAULT 0
 );
 ```
 
@@ -83,7 +90,8 @@ CREATE TABLE organizations
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL UNIQUE,
     org_type   TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_deleted INTEGER DEFAULT 0
 );
 ```
 
@@ -100,7 +108,39 @@ CREATE TABLE team_org_mapping
 );
 ```
 
-### 2.6 download_logs
+### 2.6 request_collaborators
+
+```sql
+CREATE TABLE request_collaborators
+(
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL REFERENCES requests (id),
+    user_id    INTEGER NOT NULL REFERENCES users (id),
+    work_hours REAL      DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_collab_request ON request_collaborators (request_id);
+CREATE INDEX idx_collab_user ON request_collaborators (user_id);
+```
+
+**用途**: 多研究员协作，记录每位协作者的工时。
+
+### 2.7 request_templates
+
+```sql
+CREATE TABLE request_templates
+(
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- (其余列由初始建表定义)
+    usage_count  INTEGER   DEFAULT 0,
+    updated_at   TIMESTAMP,
+    is_deleted   INTEGER   DEFAULT 0
+);
+```
+
+**注**: 软删除，`is_deleted=1` 时前端不展示。
+
+### 2.8 download_logs
 
 ```sql
 CREATE TABLE download_logs
@@ -117,29 +157,16 @@ CREATE INDEX idx_dl_user ON download_logs (user_id);
 
 ---
 
-## 3. 新增字段 (ALTER TABLE 迁移)
+## 3. 字段说明
 
-### 3.1 users 表追加
+所有字段已反映在 §2 建表 DDL 中。以下补充关键字段的业务语义：
 
-```sql
--- 密码版本标记, 用于 SHA256→bcrypt 平滑迁移
-ALTER TABLE users
-    ADD COLUMN password_version INTEGER DEFAULT 1;
--- 1 = SHA256 (legacy), 2 = bcrypt (new)
-```
-
-**迁移策略**: 用户登录时, 若 `password_version=1`, 验证 SHA256 通过后自动升级为 bcrypt 并写回, 更新
-`password_version=2`。
-
-### 3.2 requests 表追加
-
-```sql
--- 研究员退回原因
-ALTER TABLE requests
-    ADD COLUMN withdraw_reason TEXT;
-```
-
-**用途**: 研究员执行退回操作时必须填写原因, 销售在「我的需求」中查看退回详情。重新提交后清空。
+- `users.password_version`: 1=SHA256(旧), 2=bcrypt(新)。登录时若为1，验证通过后自动升级为2。
+- `requests.withdraw_reason`: 研究员退回时必填，重新提交后清空。
+- `requests.is_self_initiated`: 1 表示外出调研或研究员自主发起的需求，不依赖销售提交。
+- `requests.automation_hours`: 自动化辅助完成的工时，与 `work_hours`（人工工时）分开记录。
+- `requests.parent_request_id`: 拆单时指向原始需求，用于追溯关联关系。
+- `*.is_deleted`: 软删除标记，所有查询应加 `WHERE is_deleted = 0`。
 
 ---
 
@@ -162,11 +189,14 @@ CREATE INDEX IF NOT EXISTS idx_dl_time ON download_logs(downloaded_at);
 ## 5. 配置常量 (代码层, 非数据库)
 
 ```python
-# 需求类型
-REQUEST_TYPES = ["基金筛选", "传统报告定制", "量化策略定制", "系统定制", "综合暂时兜底"]
+# 需求类型 (当前值)
+# 历史改名: 传统报告定制→报告定制, 量化策略定制→量化策略开发, 系统定制→工具/系统开发,
+#           综合暂时兜底→其他, 外出调研→调研
+REQUEST_TYPES = ["基金筛选", "报告定制", "量化策略开发", "工具/系统开发", "调研", "其他"]
 
-# 研究范畴
-RESEARCH_SCOPES = ["纯债", "固收+", "权益", "量化", "资产配置", "其他"]
+# 研究范畴 (当前值)
+# 历史改名: 其他→综合/行业
+RESEARCH_SCOPES = ["纯债", "固收+", "权益", "量化", "资产配置", "综合/行业"]
 
 # 客户类型
 ORG_TYPES = ["银行", "券商", "保险", "理财", "FOF", "信托", "私募", "期货", "其他"]
