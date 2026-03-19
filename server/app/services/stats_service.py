@@ -86,6 +86,9 @@ def get_researcher_ranking(db: Session, period: str) -> list[dict]:
             func.coalesce(func.sum(
                 case((and_(Request.status == "completed", Request.completed_at >= start), Request.work_hours), else_=0)
             ), 0).label("work_hours"),
+            func.coalesce(func.sum(
+                case((and_(Request.status == "completed", Request.completed_at >= start), Request.automation_hours), else_=0)
+            ), 0).label("automation_hours"),
             func.sum(case((Request.status == "pending", 1), else_=0)).label("pending_count"),
             func.sum(case((Request.status == "in_progress", 1), else_=0)).label("in_progress_count"),
         )
@@ -116,11 +119,12 @@ def get_researcher_ranking(db: Session, period: str) -> list[dict]:
             "display_name": r.display_name,
             "completed_count": r.completed_count or 0,
             "work_hours": round(r.work_hours or 0, 1),
+            "automation_hours": round(r.automation_hours or 0, 1),
             "pending_count": r.pending_count or 0,
             "in_progress_count": r.in_progress_count or 0,
             "collab_count": cc,
             "collab_hours": round(ch, 1),
-            "total_hours": round((r.work_hours or 0) + ch, 1),
+            "total_hours": round((r.work_hours or 0) + (r.automation_hours or 0) + ch, 1),
             "total_completed": (r.completed_count or 0) + cc,
         })
     return result

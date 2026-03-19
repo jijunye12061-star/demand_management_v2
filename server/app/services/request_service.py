@@ -162,15 +162,15 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
                     f"{name}({wh}h)" for name, wh in pairs
                 )
                 item["total_work_hours"] = round(
-                    (item.get("work_hours") or 0) + sum(wh for _, wh in pairs), 1
+                    (item.get("work_hours") or 0) + (item.get("automation_hours") or 0) + sum(wh for _, wh in pairs), 1
                 )
             else:
                 item["collab_details"] = ""
-                item["total_work_hours"] = round(item.get("work_hours") or 0, 1)
+                item["total_work_hours"] = round((item.get("work_hours") or 0) + (item.get("automation_hours") or 0), 1)
     else:
         for item in items:
             item["collab_details"] = ""
-            item["total_work_hours"] = round(item.get("work_hours") or 0, 1)
+            item["total_work_hours"] = round((item.get("work_hours") or 0) + (item.get("automation_hours") or 0), 1)
 
     return items, total
 

@@ -20,6 +20,7 @@ FULL_COLUMNS = [
     ("状态", "status", 10),
     ("工时(h)", "work_hours", 10),
     ("自动化建设工时(h)", "automation_hours", 14),
+    ("总工时(h)", "total_work_hours", 10),
     ("关联需求ID", "parent_request_id", 12),
     ("创建时间", "created_at", 18),
     ("完成时间", "completed_at", 18),

@@ -76,6 +76,11 @@ const Dashboard: React.FC = () => {
     { title: '处理中', dataIndex: 'in_progress_count' },
     { title: '待处理', dataIndex: 'pending_count' },
     {
+      title: '自动化建设工时(h)',
+      dataIndex: 'automation_hours',
+      render: (v: any) => v > 0 ? <span style={{ color: '#1890ff' }}>{v?.toFixed(1)}</span> : '-',
+    },
+    {
       title: '总工时(h)',
       dataIndex: 'total_hours',
       sorter: (a: any, b: any) => (a.total_hours ?? 0) - (b.total_hours ?? 0),
@@ -100,7 +105,13 @@ const Dashboard: React.FC = () => {
       title: '状态', dataIndex: 'status',
       render: (_, r) => { const c = STATUS_ENUM[r.status]; return <Tag color={c?.status?.toLowerCase()}>{c?.text || r.status}</Tag>; },
     },
-    { title: '工时(h)', dataIndex: 'work_hours' },
+    {
+      title: '工时(h)',
+      render: (_: any, r: RequestItem) => {
+        const total = (r.work_hours || 0) + (r.automation_hours || 0);
+        return total > 0 ? total.toFixed(1) : '-';
+      },
+    },
     { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime' },
   ];
 
