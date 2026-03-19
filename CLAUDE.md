@@ -37,7 +37,9 @@ D:\jjy\demand_management_v2\
 │   │   ├── access.ts           # 路由权限
 │   │   └── app.tsx             # 全局布局, RequestConfig (⚠️ 覆盖 requestErrorConfig)
 │   └── dist/                   # 构建产物, Nginx 直接托管
-└── docs/                       # proposal, project, database, api, business-rules, pages, tasks
+└── docs/
+    ├── system/                 # 永久系统文档 (overview, database, api, business-rules, pages, deployment)
+    └── features/               # 活跃 PRD，按 YYYYMM-name.md 命名，完成后删除
 ```
 
 ## 核心业务模型
@@ -113,14 +115,27 @@ nssm restart OpenSpec-Nginx
 
 ## 协作规范
 
-- **Phased development**: P0→P8 逐阶段推进, 每阶段有验证门控
 - **Minimal diff**: 定向修复用 patch 指令, 避免全文件重写
-- **Audit-first**: 实现前先审计现有代码与 docs/ 下规格文档的差异
+- **Audit-first**: 实现前先审计现有代码与 `docs/system/` 下规格文档的差异
 - **确认门控**: 重大架构决策列选项让人类选择, 不自行决定
 - **Git**: `feat(scope): xxx` / `fix(scope): xxx` 等 conventional commits
 
+## 文档工作流
+
+```
+新功能  → 写 docs/features/YYYYMM-name.md (PRD)
+实施中  → .claude/progress/name.md (进度追踪，不入 git)
+完成后  → 1. 更新 docs/system/ 相关文档
+          2. 删除 features/ PRD（git 历史留痕）
+          3. 删除 .claude/progress/
+```
+
+- `docs/system/` 是系统真相源，始终保持最新，AI 每次读这里
+- `docs/features/` 是活跃 PRD，完成即删，无需归档
+- `.claude/` 不入 git（已加入 .gitignore）
+
 ## 待实现模块
 
-1. **知识库** (knowledge-base): 6 张新表, 文件上传 + 元数据标注 + 多维筛选 + 下载日志, 详见 `knowledge-base-proposal.md`
+1. **知识库** (knowledge-base): 6 张新表, 文件上传 + 元数据标注 + 多维筛选 + 下载日志, 详见 `docs/features/202603-knowledge-base.md`
 2. **研究员工作量上限**: `system_config` 表 + `researcher_max_tasks` + 容量展示下拉 + 409 溢出拦截
 3. **多文件附件**: 存储结构已预留 (`uploads/{request_id}/`)
