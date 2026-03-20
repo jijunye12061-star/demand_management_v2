@@ -5,6 +5,7 @@ import type { RequestItem } from '@/services/typings';
 import { STATUS_ENUM } from '@/utils/constants';
 import { getRequestDetail } from '@/services/api';
 import FileDownloadButton from '../FileDownloadButton';
+import { useModel, history } from '@umijs/max';
 
 const { Paragraph } = Typography;
 
@@ -22,11 +23,23 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
   request,
   downloadMode = 'mine',
 }) => {
+  const { initialState } = useModel('@@initialState');
+  const currentUser = initialState?.currentUser;
+
   // 内部导航栈：支持点击关联需求/衍生需求跳转
   const [navStack, setNavStack] = useState<RequestItem[]>([]);
+  // 完整详情（含 revisions），仅用于初始 request（非导航）
+  const [fullDetail, setFullDetail] = useState<RequestItem | null>(null);
 
   useEffect(() => {
     if (open) setNavStack([]);
+  }, [open, request?.id]);
+
+  useEffect(() => {
+    if (open && request?.id) {
+      getRequestDetail(request.id).then((d) => setFullDetail(d as RequestItem)).catch(() => {});
+    }
+    if (!open) setFullDetail(null);
   }, [open, request?.id]);
 
   const navigateTo = useCallback(async (id: number) => {
@@ -48,9 +61,21 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
   const isFeed = downloadMode === 'feed' || downloadMode === 'researcher-feed';
   const statusCfg = STATUS_ENUM[displayRequest.status];
 
-  // 自动化标签判断
-  const isAutomated = (displayRequest.automation_hours != null && displayRequest.automation_hours > 0)
-    || !!displayRequest.parent_request_id;
+  // 自动化标签判断（仅 automation_hours，revision 链接不算自动化）
+  const isAutomated = displayRequest.automation_hours != null && displayRequest.automation_hours > 0;
+
+  // 当前展示的 revisions（导航时从 navStack 顶端取，否则从 fullDetail 取）
+  const revisions = navStack.length > 0 ? displayRequest.revisions : fullDetail?.revisions;
+
+  // 「发起修改」按钮显示条件
+  const canRevise =
+    displayRequest.status === 'completed' &&
+    !displayRequest.parent_request_id &&
+    (downloadMode === 'mine' || downloadMode === 'admin') &&
+    (currentUser?.role === 'admin' ||
+      (currentUser?.role === 'sales' &&
+        (currentUser?.id === displayRequest.sales_id ||
+          currentUser?.id === displayRequest.created_by)));
 
   return (
     <Drawer
@@ -67,6 +92,24 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
       onClose={onClose}
       destroyOnClose
     >
+      {/* 修改需求：顶部展示关联原始需求 */}
+      {displayRequest.parent_request_id && displayRequest.link_type === 'revision' && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={
+            <span>
+              这是{' '}
+              <a onClick={() => navigateTo(displayRequest.parent_request_id!)}>
+                {displayRequest.parent_title || `#${displayRequest.parent_request_id}`}
+              </a>
+              {' '}的修改需求
+            </span>
+          }
+        />
+      )}
+
       {/* withdrawn 状态：顶部醒目展示退回原因 */}
       {displayRequest.status === 'withdrawn' && displayRequest.withdraw_reason && (
         <Alert
@@ -140,14 +183,6 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
           </ProDescriptions.Item>
         )}
 
-        {displayRequest.parent_request_id && displayRequest.parent_title && (
-          <ProDescriptions.Item label="关联原始需求" span={2}>
-            <a onClick={() => navigateTo(displayRequest.parent_request_id!)}>
-              {displayRequest.parent_title}
-            </a>
-          </ProDescriptions.Item>
-        )}
-
         <ProDescriptions.Item label="需求描述" span={2}>
           <Paragraph ellipsis={{ rows: 3, expandable: true, symbol: '展开' }}>
             {displayRequest.description || '-'}
@@ -206,6 +241,65 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
               },
             ]}
           />
+        </div>
+      )}
+
+      {/* 修改历史 */}
+      {revisions && revisions.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>修改历史（{revisions.length}次修改）</div>
+          <Table
+            size="small"
+            rowKey="id"
+            dataSource={revisions}
+            pagination={false}
+            columns={[
+              {
+                title: '标题',
+                dataIndex: 'title',
+                ellipsis: true,
+                render: (title: string, row: any) => (
+                  <a onClick={() => navigateTo(row.id)}>{title}</a>
+                ),
+              },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                width: 72,
+                render: (s: string) => {
+                  const cfg = STATUS_ENUM[s];
+                  return <Tag color={cfg?.status?.toLowerCase()}>{cfg?.text || s}</Tag>;
+                },
+              },
+              { title: '研究员', dataIndex: 'researcher_name', width: 80 },
+              { title: '工时(h)', dataIndex: 'work_hours', width: 72 },
+              {
+                title: '完成时间',
+                dataIndex: 'completed_at',
+                width: 148,
+                render: (v: string) => v ? v.slice(0, 16).replace('T', ' ') : '-',
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      {/* 发起修改按钮 */}
+      {canRevise && (
+        <div style={{ marginTop: 24, textAlign: 'right' }}>
+          <Button
+            type="primary"
+            onClick={() => {
+              const id = displayRequest.id;
+              const n = (fullDetail?.revision_count ?? displayRequest.revision_count ?? 0) + 1;
+              history.push(
+                `/sales/submit?parent_id=${id}&link_type=revision&title=${encodeURIComponent(displayRequest.title + ' - 修改' + n)}`
+              );
+              onClose();
+            }}
+          >
+            发起修改
+          </Button>
         </div>
       )}
     </Drawer>

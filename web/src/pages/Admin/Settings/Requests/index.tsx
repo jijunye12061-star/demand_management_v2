@@ -71,8 +71,14 @@ const Requests: React.FC = () => {
       render: (dom, entity) => (
         <span>
           {dom}
-          {(entity.automation_hours! > 0 || !!entity.parent_request_id) && (
+          {entity.automation_hours! > 0 && (
             <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>自动化</Tag>
+          )}
+          {entity.link_type === 'revision' && (
+            <Tag color="orange" style={{ marginLeft: 4, fontSize: 11 }}>修改</Tag>
+          )}
+          {!entity.parent_request_id && (entity.revision_count ?? 0) > 0 && (
+            <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>{entity.revision_count}次修改</Tag>
           )}
         </span>
       ),
@@ -182,6 +188,8 @@ const Requests: React.FC = () => {
             <Descriptions.Item label="最近更新">{editingRecord.updated_at || '-'}</Descriptions.Item>
             {editingRecord.completed_at && <Descriptions.Item label="完成时间">{editingRecord.completed_at}</Descriptions.Item>}
             {editingRecord.withdraw_reason && <Descriptions.Item label="退回原因" span={2}>{editingRecord.withdraw_reason}</Descriptions.Item>}
+            {editingRecord.parent_request_id && <Descriptions.Item label="关联原始需求 ID">{editingRecord.parent_request_id}</Descriptions.Item>}
+            {editingRecord.link_type && <Descriptions.Item label="关联类型">{editingRecord.link_type === 'revision' ? '修改迭代' : editingRecord.link_type}</Descriptions.Item>}
           </Descriptions>
         )}
 

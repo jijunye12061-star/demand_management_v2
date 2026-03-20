@@ -110,8 +110,14 @@ const MyRequests: React.FC = () => {
       render: (dom, entity) => (
         <span>
           <a onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>{dom}</a>
-          {(entity.automation_hours! > 0 || !!entity.parent_request_id) && (
+          {entity.automation_hours! > 0 && (
             <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>自动化</Tag>
+          )}
+          {entity.link_type === 'revision' && (
+            <Tag color="orange" style={{ marginLeft: 4, fontSize: 11 }}>修改</Tag>
+          )}
+          {!entity.parent_request_id && (entity.revision_count ?? 0) > 0 && (
+            <Tag color="blue" style={{ marginLeft: 4, fontSize: 11 }}>{entity.revision_count}次修改</Tag>
           )}
         </span>
       ),

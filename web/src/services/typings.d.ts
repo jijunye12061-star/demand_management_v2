@@ -55,7 +55,19 @@ export interface RequestItem {
   collaborators?: CollaboratorDetail[];
   automation_hours?: number;
   parent_request_id?: number;
+  link_type?: 'revision' | null;
   parent_title?: string;
+  revision_count?: number;
+  revisions?: {
+    id: number;
+    title: string;
+    description?: string;
+    status: string;
+    work_hours?: number;
+    researcher_name?: string;
+    created_at?: string;
+    completed_at?: string;
+  }[];
   children?: { id: number; title: string; status: string; work_hours?: number; completed_at?: string }[];
 }
 
