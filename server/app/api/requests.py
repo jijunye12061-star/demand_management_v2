@@ -177,10 +177,14 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
         result["parent_title"] = parent.title if parent else None
     else:
         result["parent_title"] = None
-    # 衍生需求列表（全量，含旧拆单）
+    # 衍生需求列表（排除 revision，revision 走单独的 revisions 字段）
     children = (
         db.query(Request)
-        .filter(Request.parent_request_id == request_id, Request.status != "deleted")
+        .filter(
+            Request.parent_request_id == request_id,
+            Request.status != "deleted",
+            Request.link_type != "revision",
+        )
         .order_by(Request.created_at.desc())
         .all()
     )
@@ -196,6 +200,8 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
     ]
     # 修改迭代列表（link_type='revision'，带研究员名字）
     result["revisions"] = get_revisions(db, request_id)
+    # revision_count 供提交页面预填标题用（"修改N"）
+    result["revision_count"] = len(result["revisions"])
     return result
 
 
@@ -215,8 +221,11 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         department = body.department
 
     # 校验 parent_request_id（revision 关联校验）
+    # link_type 未传时默认 'sub'（手动关联衍生需求场景的兜底）
+    final_link_type = body.link_type
     if body.parent_request_id is not None:
-        validate_parent_request(db, body.parent_request_id, body.link_type or "")
+        final_link_type = body.link_type or "sub"
+        validate_parent_request(db, body.parent_request_id, final_link_type)
 
     req = Request(
         title=body.title,
@@ -235,7 +244,7 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         updated_at=now_beijing(),
         status="pending",
         parent_request_id=body.parent_request_id,
-        link_type=body.link_type,
+        link_type=final_link_type,
     )
     db.add(req)
     db.commit()

@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, func, or_, and_, exists
 from sqlalchemy.orm import Session, aliased
 
 from app.models.request import Request
@@ -22,8 +22,8 @@ def validate_parent_request(db: Session, parent_id: int, link_type: str):
         raise HTTPException(400, "只能对已完成的需求发起修改")
     if parent.parent_request_id is not None:
         raise HTTPException(400, "不能对修改需求再发起修改，请从原始需求操作")
-    if link_type != "revision":
-        raise HTTPException(400, "link_type 必须为 'revision'")
+    if link_type not in ("revision", "sub"):
+        raise HTTPException(400, "link_type 必须为 'revision' 或 'sub'")
 
 
 def get_revisions(db: Session, request_id: int) -> list[dict]:
@@ -69,10 +69,32 @@ def _confidential_filter(user: User):
 def _scope_filter(user: User, scope: str | None):
     """mine/feed scope visibility rules"""
     if scope == "feed":
+        req_table = Request.__table__
+        # 排除"已被修改版本取代"的原始需求：有已完成的 revision 子需求
+        child_alias = req_table.alias("feed_child")
+        has_completed_child = exists().where(
+            and_(
+                child_alias.c.parent_request_id == Request.id,
+                child_alias.c.link_type == "revision",
+                child_alias.c.status == "completed",
+            )
+        )
+        # 排除"已被更新修改版本取代"的修改需求：同链内有更新的已完成修改需求
+        sibling_alias = req_table.alias("feed_sibling")
+        has_newer_sibling = exists().where(
+            and_(
+                sibling_alias.c.parent_request_id == Request.parent_request_id,
+                sibling_alias.c.link_type == "revision",
+                sibling_alias.c.status == "completed",
+                sibling_alias.c.id > Request.id,
+            )
+        )
         return and_(
             Request.status == "completed",
             Request.is_confidential == 0,
             Request.request_type != "工具/系统开发",
+            ~has_completed_child,
+            ~has_newer_sibling,
         )
 
     # scope=mine (default) — 排除 canceled 和 deleted
@@ -104,17 +126,13 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
         .subquery("dl")
     )
     # revision_count: 每条需求下 link_type='revision' 的子需求数量
-    rev_count_alias = db.query(Request.id, Request.parent_request_id, Request.link_type, Request.status).subquery("rev_src")
     rev_count = (
         db.query(
-            rev_count_alias.c.parent_request_id.label("pid"),
-            func.count(rev_count_alias.c.id).label("rcount"),
+            Request.parent_request_id.label("pid"),
+            func.count(Request.id).label("rcount"),
         )
-        .filter(
-            rev_count_alias.c.link_type == "revision",
-            rev_count_alias.c.status != "deleted",
-        )
-        .group_by(rev_count_alias.c.parent_request_id)
+        .filter(Request.link_type == "revision", Request.status != "deleted")
+        .group_by(Request.parent_request_id)
         .subquery("rc")
     )
 

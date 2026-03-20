@@ -55,7 +55,7 @@ export interface RequestItem {
   collaborators?: CollaboratorDetail[];
   automation_hours?: number;
   parent_request_id?: number;
-  link_type?: 'revision' | null;
+  link_type?: 'revision' | 'sub' | null;
   parent_title?: string;
   revision_count?: number;
   revisions?: {

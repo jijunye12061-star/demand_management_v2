@@ -64,8 +64,10 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
   // 自动化标签判断（仅 automation_hours，revision 链接不算自动化）
   const isAutomated = displayRequest.automation_hours != null && displayRequest.automation_hours > 0;
 
-  // 当前展示的 revisions（导航时从 navStack 顶端取，否则从 fullDetail 取）
-  const revisions = navStack.length > 0 ? displayRequest.revisions : fullDetail?.revisions;
+  // 当前展示的 revisions / children（导航时从 navStack 顶端取，否则从 fullDetail 取）
+  const detailSrc = navStack.length > 0 ? displayRequest : fullDetail;
+  const revisions = detailSrc?.revisions;
+  const children = detailSrc?.children;
 
   // 「发起修改」按钮显示条件
   const canRevise =
@@ -206,13 +208,13 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
       </ProDescriptions>
 
       {/* 衍生需求列表 */}
-      {displayRequest.children && displayRequest.children.length > 0 && (
+      {children && children.length > 0 && (
         <div style={{ marginTop: 24 }}>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>衍生需求（{displayRequest.children.length}）</div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>衍生需求（{children.length}）</div>
           <Table
             size="small"
             rowKey="id"
-            dataSource={displayRequest.children}
+            dataSource={children}
             pagination={false}
             columns={[
               {
