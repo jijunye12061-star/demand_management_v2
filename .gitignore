@@ -26,6 +26,4 @@ web/dist/
 web/node_modules/
 
 # Claude Code 工作文件（过程产物，不入库）
-.claude/progress/
-.claude/settings.local.json
-.claude/memory/
+.claude/
