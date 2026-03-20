@@ -5,23 +5,26 @@ import {
 } from 'recharts';
 import { getFeedStats } from '@/services/api';
 
-// 需求类型配色
+// 需求类型配色（与 constants.ts REQUEST_TYPE_OPTIONS 保持一致）
 const RT_COLORS: Record<string, string> = {
   '基金筛选': '#1890ff',
-  '传统报告定制': '#52c41a',
-  '量化策略定制': '#faad14',
-  '系统定制': '#722ed1',
-  '综合暂时兜底': '#13c2c2',
+  '报告定制': '#52c41a',
+  '定期报告': '#faad14',
+  '调研': '#722ed1',
+  '量化策略开发': '#f04864',
+  '工具/系统开发': '#13c2c2',
+  '其他': '#bfbfbf',
 };
 
-// 研究范畴配色
+// 研究范畴配色（与 constants.ts RESEARCH_SCOPE_OPTIONS 保持一致）
 const RS_COLORS: Record<string, string> = {
   '纯债': '#1890ff',
   '固收+': '#2fc25b',
   '权益': '#facc14',
   '量化': '#f04864',
   '资产配置': '#8543e0',
-  '其他': '#13c2c2',
+  '综合/行业': '#13c2c2',
+  '不涉及': '#bfbfbf',
 };
 
 const FALLBACK_COLOR = '#bfbfbf';
