@@ -15,6 +15,7 @@ class RequestCreate(BaseModel):
     created_at: str | None = None
     sales_id: int | None = None  # 研究员代提时必填
     parent_request_id: int | None = None
+    link_type: str | None = None  # 'revision'
 
 
 class RequestUpdate(BaseModel):
@@ -58,12 +59,15 @@ class RequestResponse(BaseModel):
     completed_at: str | None = None
     automation_hours: float | None = None
     parent_request_id: int | None = None
+    link_type: str | None = None
     # joined fields
     sales_name: str | None = None
     researcher_name: str | None = None
     download_count: int = 0
+    revision_count: int = 0
     parent_title: str | None = None
     children: list[dict] | None = None
+    revisions: list[dict] | None = None
 
     model_config = {"from_attributes": True}
 

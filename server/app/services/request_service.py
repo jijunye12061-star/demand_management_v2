@@ -1,5 +1,6 @@
+from fastapi import HTTPException
 from sqlalchemy import select, func, or_, and_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.request import Request
 from app.models.user import User
@@ -10,6 +11,47 @@ from app.utils.datetime_utils import now_beijing
 
 # scope=feed 时需要置 null 的敏感字段
 _FEED_MASKED_FIELDS = {"org_name", "department", "work_hours", "sales_id", "sales_name", "is_confidential"}
+
+
+def validate_parent_request(db: Session, parent_id: int, link_type: str):
+    """校验关联需求合法性（用于创建修改需求时）"""
+    parent = db.get(Request, parent_id)
+    if not parent or parent.status == "deleted":
+        raise HTTPException(400, "关联的原始需求不存在")
+    if parent.status != "completed":
+        raise HTTPException(400, "只能对已完成的需求发起修改")
+    if parent.parent_request_id is not None:
+        raise HTTPException(400, "不能对修改需求再发起修改，请从原始需求操作")
+    if link_type != "revision":
+        raise HTTPException(400, "link_type 必须为 'revision'")
+
+
+def get_revisions(db: Session, request_id: int) -> list[dict]:
+    """获取某需求的所有修改子需求"""
+    researcher = aliased(User)
+    rows = db.execute(
+        select(Request, researcher.display_name.label("researcher_name"))
+        .outerjoin(researcher, Request.researcher_id == researcher.id)
+        .where(
+            Request.parent_request_id == request_id,
+            Request.link_type == "revision",
+            Request.status != "deleted",
+        )
+        .order_by(Request.created_at.asc())
+    ).all()
+    return [
+        {
+            "id": r.Request.id,
+            "title": r.Request.title,
+            "description": r.Request.description,
+            "status": r.Request.status,
+            "work_hours": r.Request.work_hours,
+            "researcher_name": r.researcher_name,
+            "created_at": r.Request.created_at,
+            "completed_at": r.Request.completed_at,
+        }
+        for r in rows
+    ]
 
 
 def _confidential_filter(user: User):
@@ -61,6 +103,20 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
         .group_by(DownloadLog.request_id)
         .subquery("dl")
     )
+    # revision_count: 每条需求下 link_type='revision' 的子需求数量
+    rev_count_alias = db.query(Request.id, Request.parent_request_id, Request.link_type, Request.status).subquery("rev_src")
+    rev_count = (
+        db.query(
+            rev_count_alias.c.parent_request_id.label("pid"),
+            func.count(rev_count_alias.c.id).label("rcount"),
+        )
+        .filter(
+            rev_count_alias.c.link_type == "revision",
+            rev_count_alias.c.status != "deleted",
+        )
+        .group_by(rev_count_alias.c.parent_request_id)
+        .subquery("rc")
+    )
 
     q = (
         db.query(
@@ -68,10 +124,12 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
             sales_user.c.display_name.label("sales_name"),
             researcher_user.c.display_name.label("researcher_name"),
             func.coalesce(dl_count.c.dl_count, 0).label("download_count"),
+            func.coalesce(rev_count.c.rcount, 0).label("revision_count"),
         )
         .outerjoin(sales_user, Request.sales_id == sales_user.c.id)
         .outerjoin(researcher_user, Request.researcher_id == researcher_user.c.id)
         .outerjoin(dl_count, Request.id == dl_count.c.request_id)
+        .outerjoin(rev_count, Request.id == rev_count.c.pid)
     )
 
     # Scope filter
@@ -116,11 +174,12 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
 
     is_feed = params.scope == "feed"
     items = []
-    for req, s_name, r_name, dl in rows:
+    for req, s_name, r_name, dl, rev_cnt in rows:
         d = {c.name: getattr(req, c.name) for c in req.__table__.columns}
         d["sales_name"] = s_name
         d["researcher_name"] = r_name
         d["download_count"] = dl
+        d["revision_count"] = rev_cnt
 
         # ── FIX: feed 模式字段脱敏 ──
         # business-rules §2.2: scope=feed 时 org_name, department, work_hours,

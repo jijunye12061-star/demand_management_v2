@@ -26,6 +26,7 @@ class Request(Base):
     is_self_initiated: Mapped[int] = mapped_column(Integer, default=0)  # 研究员自发需求标记
     automation_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     parent_request_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("requests.id"), nullable=True)
+    link_type: Mapped[str | None] = mapped_column(Text)  # 'revision' | None
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)

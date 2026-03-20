@@ -15,7 +15,7 @@ from app.schemas.request import (
 from app.services.request_service import (
     query_requests, accept_request, complete_request,
     withdraw_request, resubmit_request, cancel_request,
-    reopen_request, revoke_accept
+    reopen_request, revoke_accept, validate_parent_request, get_revisions,
 )
 from app.utils.datetime_utils import now_beijing
 
@@ -177,7 +177,7 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
         result["parent_title"] = parent.title if parent else None
     else:
         result["parent_title"] = None
-    # 衍生需求列表
+    # 衍生需求列表（全量，含旧拆单）
     children = (
         db.query(Request)
         .filter(Request.parent_request_id == request_id, Request.status != "deleted")
@@ -194,6 +194,8 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
         }
         for c in children
     ]
+    # 修改迭代列表（link_type='revision'，带研究员名字）
+    result["revisions"] = get_revisions(db, request_id)
     return result
 
 
@@ -212,11 +214,9 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         org_type = body.org_type
         department = body.department
 
-    # 校验 parent_request_id
+    # 校验 parent_request_id（revision 关联校验）
     if body.parent_request_id is not None:
-        parent = db.get(Request, body.parent_request_id)
-        if not parent or parent.status == "deleted":
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "关联的原始需求不存在")
+        validate_parent_request(db, body.parent_request_id, body.link_type or "")
 
     req = Request(
         title=body.title,
@@ -235,6 +235,7 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         updated_at=now_beijing(),
         status="pending",
         parent_request_id=body.parent_request_id,
+        link_type=body.link_type,
     )
     db.add(req)
     db.commit()

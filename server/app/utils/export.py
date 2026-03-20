@@ -21,7 +21,8 @@ FULL_COLUMNS = [
     ("工时(h)", "work_hours", 10),
     ("自动化建设工时(h)", "automation_hours", 14),
     ("总工时(h)", "total_work_hours", 10),
-    ("关联需求ID", "parent_request_id", 12),
+    ("关联原始需求ID", "parent_request_id", 14),
+    ("关联类型", "link_type_label", 12),
     ("创建时间", "created_at", 18),
     ("完成时间", "completed_at", 18),
     ("下载次数", "download_count", 10),
@@ -47,6 +48,10 @@ STATUS_MAP = {
     "canceled": "已取消",
 }
 
+LINK_TYPE_MAP = {
+    "revision": "修改迭代",
+}
+
 
 def generate_excel(items: list[dict], columns: list[tuple] | None = None) -> io.BytesIO:
     cols = columns or FULL_COLUMNS
@@ -66,9 +71,12 @@ def generate_excel(items: list[dict], columns: list[tuple] | None = None) -> io.
     # Data rows
     for row_idx, item in enumerate(items, 2):
         for col_idx, (_, key, _) in enumerate(cols, 1):
-            value = item.get(key, "")
-            if key == "status":
-                value = STATUS_MAP.get(value, value)
+            if key == "link_type_label":
+                value = LINK_TYPE_MAP.get(item.get("link_type") or "", "")
+            else:
+                value = item.get(key, "")
+                if key == "status":
+                    value = STATUS_MAP.get(value, value)
             ws.cell(row=row_idx, column=col_idx, value=value)
 
     buf = io.BytesIO()
