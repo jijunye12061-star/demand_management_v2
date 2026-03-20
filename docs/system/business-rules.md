@@ -71,6 +71,12 @@ admin 同时具备研究员和销售身份:
 
 所有角色看到的内容一致 — 已完成的公开需求。
 
+**修改迭代去重规则**（同链只展示最新完成版）：
+- 原始需求有已完成的 `revision` 子需求时，原始需求不进入 feed（被取代）
+- 同链内有更新（`id` 更大）的已完成 `revision` 时，旧修改版本不进入 feed
+
+效果：同一需求链在 feed 中仅出现一次（最新完成版）。
+
 **字段过滤** (后端强制, scope=feed 时):
 
 - ✅ 返回: id, title, description, request_type, research_scope, org_type, researcher_id, researcher_name, completed_at,
@@ -182,12 +188,14 @@ org_type 变化时:
 
 ## 6.1 自动化工时体系
 
-研究员首次建设自动化流程时，`automation_hours` 记录建设投入；后续基于该流程产出的需求通过 `parent_request_id` 关联原始需求，形成"原始→衍生"链，用于量化自动化投入回报。
+研究员首次建设自动化流程时，`automation_hours` 记录建设投入；后续基于该流程产出的需求通过 `parent_request_id` + `link_type='sub'` 关联原始需求，形成"原始→衍生"链，用于量化自动化投入回报。
 
 **推导规则（前端展示"自动化"标签）**:
 ```
-显示自动化标签 = automation_hours > 0 OR parent_request_id IS NOT NULL
+显示自动化标签 = automation_hours > 0 OR (parent_request_id IS NOT NULL AND link_type = 'sub')
 ```
+
+> 注意：`link_type='revision'` 的修改迭代需求不显示"自动化"标签，只有 `link_type='sub'` 的衍生需求才算自动化链路。
 
 **关联约束**:
 - 单亲: 一个需求最多一个 `parent_request_id`
@@ -213,3 +221,42 @@ org_type 变化时:
 - 按需求 ID 建子目录, 为后续多文件扩展预留结构
 - 本期每个需求仅支持单文件上传
 - `attachment_path` 字段存储相对路径
+
+---
+
+## 9. 修改迭代规则 (revision-iteration)
+
+### 9.1 两种关联类型
+
+| link_type | 场景 | 创建方式 |
+|---|---|---|
+| `'revision'` | 修改迭代：客户不满意，对已完成需求发起返工 | 详情抽屉"发起修改"按钮 → 跳转提交页（URL 携带 `parent_id` + `link_type=revision`） |
+| `'sub'` | 衍生需求：同主题不同机构等关联需求 | 提交页手动选择"关联原始需求" |
+
+### 9.2 创建约束
+
+- 只能关联 `status='completed'` 的需求作为 parent
+- parent 本身不能有 parent（只允许一层关联，不允许修改需求再发起修改）
+- 提交时若 `link_type` 未传，后端默认推断为 `'sub'`
+
+### 9.3 修改需求标题约定
+
+- 自动填充：`{原始标题} - 修改{N}`，N = 已有修改次数 + 1
+- 标题仅作参考，用户可自由编辑
+
+### 9.4 详情展示
+
+- `GET /requests/:id` 返回：
+  - `revisions`: `link_type='revision'` 的子需求列表（修改历史）
+  - `children`: `link_type='sub'` 的子需求列表（衍生需求）
+  - `revision_count`: revision 子需求数量（用于预填下一次修改的序号）
+  - `parent_title`: 关联原始需求标题（仅有 parent 时返回）
+
+### 9.5 列表标签展示
+
+| 条件 | 标签 |
+|---|---|
+| `link_type='revision'` | 修改需求 |
+| `revision_count > 0` | N次修改（原始需求有修改历史） |
+| `automation_hours > 0` | 自动化 |
+| `link_type='sub'` | （无特殊标签，详见自动化规则） |

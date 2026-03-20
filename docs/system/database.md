@@ -67,7 +67,8 @@ CREATE TABLE requests
     withdraw_reason    TEXT,                    -- 研究员退回时必填，重新提交后清空
     is_self_initiated  INTEGER   DEFAULT 0,     -- 1=外出调研/研究员自主发起
     automation_hours   REAL      DEFAULT NULL,  -- 自动化工时（CA功能）
-    parent_request_id  INTEGER   DEFAULT NULL REFERENCES requests (id)  -- 拆单来源
+    parent_request_id  INTEGER   DEFAULT NULL REFERENCES requests (id),  -- 关联原始需求（衍生/修改来源）
+    link_type          TEXT      DEFAULT NULL   -- 关联类型: 'revision'=修改迭代, 'sub'=衍生需求
 );
 ```
 
@@ -166,7 +167,8 @@ CREATE INDEX idx_dl_user ON download_logs (user_id);
 - `requests.withdraw_reason`: 研究员退回时必填，重新提交后清空。
 - `requests.is_self_initiated`: 1 表示外出调研或研究员自主发起的需求，不依赖销售提交。
 - `requests.automation_hours`: 自动化辅助完成的工时，与 `work_hours`（人工工时）分开记录。
-- `requests.parent_request_id`: 拆单时指向原始需求，用于追溯关联关系。
+- `requests.parent_request_id`: 指向关联的原始需求 ID，与 `link_type` 配合使用。
+- `requests.link_type`: 关联类型，`'revision'` = 修改迭代需求（从详情页"发起修改"创建），`'sub'` = 衍生需求（手动关联）。未关联时为 NULL。
 - `*.is_deleted`: 软删除标记，所有查询应加 `WHERE is_deleted = 0`。
 
 ---
@@ -180,6 +182,8 @@ CREATE INDEX IF NOT EXISTS idx_req_sales ON requests(sales_id);
 CREATE INDEX IF NOT EXISTS idx_req_researcher ON requests(researcher_id);
 CREATE INDEX IF NOT EXISTS idx_req_created_at ON requests(created_at);
 CREATE INDEX IF NOT EXISTS idx_req_confidential ON requests(is_confidential);
+-- 修改迭代 / 衍生需求关联查询
+CREATE INDEX IF NOT EXISTS idx_req_parent ON requests(parent_request_id);
 
 -- download_logs 时间范围查询
 CREATE INDEX IF NOT EXISTS idx_dl_time ON download_logs(downloaded_at);
