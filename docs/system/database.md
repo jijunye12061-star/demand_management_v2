@@ -17,6 +17,7 @@ teams ──── N:N ─── organizations (via team_org_mapping)
 
 requests ── 1:N ─── download_logs (request_id)
 requests ── 1:N ─── requests (parent_request_id, 自引用: 原始→衍生)
+requests ── 1:N ─── request_updates (request_id)
 ```
 
 ---
@@ -142,7 +143,26 @@ CREATE TABLE request_templates
 
 **注**: 软删除，`is_deleted=1` 时前端不展示。
 
-### 2.8 download_logs
+### 2.8 request_updates
+
+```sql
+CREATE TABLE request_updates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id  INTEGER NOT NULL REFERENCES requests(id),
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    content     TEXT    NOT NULL,
+    work_hours  REAL    NOT NULL DEFAULT 0,
+    created_at  TEXT,
+    updated_at  TEXT,
+    is_deleted  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_updates_request ON request_updates(request_id);
+CREATE INDEX idx_updates_user ON request_updates(user_id);
+```
+
+**用途**: 研究员在需求处理中记录阶段性进度（文字 + 工时），完成时自动累加为预填工时。
+
+### 2.9 download_logs
 
 ```sql
 CREATE TABLE download_logs

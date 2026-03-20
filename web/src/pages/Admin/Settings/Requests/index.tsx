@@ -124,6 +124,7 @@ const Requests: React.FC = () => {
     },
     { title: '工时', dataIndex: 'work_hours', width: 60, hideInSearch: true },
     { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 150, hideInSearch: true },
+    { title: '最后更新', dataIndex: 'updated_at', valueType: 'dateTime', width: 160, hideInSearch: true },
     {
       title: '日期范围', dataIndex: 'dateRange', valueType: 'dateRange', hideInTable: true,
       search: { transform: (v) => ({ date_from: v[0], date_to: v[1] }) },

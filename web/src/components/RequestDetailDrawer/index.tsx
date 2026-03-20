@@ -5,6 +5,7 @@ import type { RequestItem } from '@/services/typings';
 import { STATUS_ENUM } from '@/utils/constants';
 import { getRequestDetail } from '@/services/api';
 import FileDownloadButton from '../FileDownloadButton';
+import ProgressTimeline from '../ProgressTimeline';
 import { useModel, history } from '@umijs/max';
 
 const { Paragraph } = Typography;
@@ -284,6 +285,11 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
             ]}
           />
         </div>
+      )}
+
+      {/* 进度记录时间线 */}
+      {displayRequest && (
+        <ProgressTimeline requestId={displayRequest.id} />
       )}
 
       {/* 发起修改按钮 */}

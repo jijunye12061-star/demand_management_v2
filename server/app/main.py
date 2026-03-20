@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.backup import start_scheduler, stop_scheduler
 from app.core.middleware import ResponseWrapperMiddleware
 from app.api import auth, requests, users, organizations, teams, files, stats, exports, templates
+from app.api import progress_updates
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ app.include_router(files.router, prefix=PREFIX)
 app.include_router(stats.router, prefix=PREFIX)
 app.include_router(exports.router, prefix=PREFIX)
 app.include_router(templates.router, prefix=PREFIX)
+app.include_router(progress_updates.router, prefix=PREFIX)
 
 
 @app.get("/")

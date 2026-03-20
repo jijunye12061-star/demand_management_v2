@@ -260,3 +260,35 @@ org_type 变化时:
 | `revision_count > 0` | N次修改（原始需求有修改历史） |
 | `automation_hours > 0` | 自动化 |
 | `link_type='sub'` | （无特殊标签，详见自动化规则） |
+
+---
+
+## 10. 进度更新规则 (progress-updates)
+
+### 10.1 创建权限
+
+- 仅 `researcher_id = current_user.id` 可创建（对接研究员本人）
+- 前置条件: `status = 'in_progress'`
+- admin **不可代创建**（即使角色为 admin 也受上述约束）
+
+### 10.2 编辑 / 删除权限
+
+- 仅记录创建者本人可操作
+- 时间窗口: 24 小时（从 `created_at` 起算，超时锁定）
+- 前置条件: 需求仍为 `in_progress`（已完成后不可修改历史进度）
+- admin **无特权**，与研究员规则相同
+
+### 10.3 读取权限
+
+- 任意已登录用户均可查看（含 feed 模式）
+- Feed 模式下完整展示进度时间线（含 `user_name`），无脱敏需求
+
+### 10.4 工时预填规则
+
+- 研究员打开"完成任务"弹窗时，自动调 `GET /requests/:id/updates` 获取累计工时
+- `total_work_hours > 0` 时预填到"交付工时"字段，用户可覆盖
+
+### 10.5 软删除
+
+- `is_deleted = 1` 标记删除，不物理删除
+- 列表查询过滤 `is_deleted = 0`

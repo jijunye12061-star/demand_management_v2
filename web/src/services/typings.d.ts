@@ -71,6 +71,24 @@ export interface RequestItem {
   children?: { id: number; title: string; status: string; work_hours?: number; completed_at?: string }[];
 }
 
+export interface ProgressUpdateItem {
+  id: number;
+  request_id: number;
+  user_id: number;
+  user_name: string;
+  content: string;
+  work_hours: number;
+  created_at?: string;
+  updated_at?: string;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface ProgressUpdateListResponse {
+  items: ProgressUpdateItem[];
+  total_work_hours: number;
+}
+
 export interface RequestListParams {
   status?: string;
   request_type?: string;

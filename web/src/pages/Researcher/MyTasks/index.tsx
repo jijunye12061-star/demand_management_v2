@@ -30,10 +30,12 @@ import {
   reopenRequest,
   revokeAcceptRequest,
 } from '@/services/api';
+import { getProgressUpdates } from '@/services/progressUpdate';
 import type { RequestItem } from '@/services/typings';
 import { STATUS_ENUM, REQUEST_TYPE_OPTIONS } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
+import ProgressUpdateModal from '../components/ProgressUpdateModal';
 
 const MyTasks: React.FC = () => {
   const { message } = App.useApp();
@@ -53,6 +55,10 @@ const MyTasks: React.FC = () => {
   const [withdrawingId, setWithdrawingId] = useState<number>();
   const [withdrawForm] = Form.useForm();
   const [withdrawing, setWithdrawing] = useState(false);
+
+  // 更新进度 Modal
+  const [progressModalVisible, setProgressModalVisible] = useState(false);
+  const [progressingId, setProgressingId] = useState<number>();
 
   // 完成任务 Modal
   const [completeModalVisible, setCompleteModalVisible] = useState(false);
@@ -115,11 +121,17 @@ const MyTasks: React.FC = () => {
   };
 
   // ── 完成任务 ──
-  const openCompleteModal = (id: number) => {
+  const openCompleteModal = async (id: number) => {
     setCompletingId(id);
     setCompleteModalVisible(true);
     setFileList([]);
     completeForm.resetFields();
+    try {
+      const result = await getProgressUpdates(id);
+      if (result.total_work_hours > 0) {
+        completeForm.setFieldsValue({ work_hours: result.total_work_hours });
+      }
+    } catch { /* 预填失败不影响主流程 */ }
   };
 
   const handleComplete = async () => {
@@ -244,15 +256,16 @@ const MyTasks: React.FC = () => {
     },
   ];
 
-  // ── 处理中: 完成 + 撤销接受 ──
+  // ── 处理中: 更新进度 + 完成 + 撤销接受 ──
   const progressColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
     {
       title: '操作',
       valueType: 'option',
       key: 'option',
-      width: 180,
+      width: 220,
       render: (_, entity) => [
+        <a key="progress" onClick={() => { setProgressingId(entity.id); setProgressModalVisible(true); }}>更新进度</a>,
         <a key="complete" onClick={() => openCompleteModal(entity.id)}>完成</a>,
         <Popconfirm
           key="revoke"
@@ -388,6 +401,15 @@ const MyTasks: React.FC = () => {
         request={currentRow}
         downloadMode="mine"
       />
+
+      {progressingId && (
+        <ProgressUpdateModal
+          open={progressModalVisible}
+          onClose={() => setProgressModalVisible(false)}
+          onSuccess={() => progressRef.current?.reload()}
+          requestId={progressingId}
+        />
+      )}
 
       {/* 退回原因 Modal */}
       <Modal
