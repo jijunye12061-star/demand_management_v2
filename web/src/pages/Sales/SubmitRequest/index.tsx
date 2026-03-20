@@ -23,7 +23,7 @@ const SubmitRequest: React.FC = () => {
   const [orgList, setOrgList] = useState<Organization[]>([]);
   const { modal, message } = App.useApp();
   const [linkableOptions, setLinkableOptions] = useState<{ label: string; value: number }[]>([]);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [parentRequest, setParentRequest] = useState<RequestItem | null>(null);
   const [linkType, setLinkType] = useState<string | null>(null);
 
