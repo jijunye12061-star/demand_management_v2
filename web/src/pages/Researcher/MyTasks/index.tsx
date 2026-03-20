@@ -2,6 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   PageContainer,
   ProTable,
+  ProForm,
+  ProFormText,
+  ProFormTextArea,
+  ProFormSelect,
+  ProFormDependency,
   ActionType,
   ProColumns,
 } from '@ant-design/pro-components';
@@ -29,10 +34,14 @@ import {
   withdrawRequest,
   reopenRequest,
   revokeAcceptRequest,
+  cancelRequest,
+  updateRequest,
+  resubmitRequest,
+  getOrganizations,
 } from '@/services/api';
 import { getProgressUpdates } from '@/services/progressUpdate';
-import type { RequestItem } from '@/services/typings';
-import { STATUS_ENUM, REQUEST_TYPE_OPTIONS } from '@/utils/constants';
+import type { RequestItem, Organization } from '@/services/typings';
+import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
 import ProgressUpdateModal from '../components/ProgressUpdateModal';
@@ -55,6 +64,14 @@ const MyTasks: React.FC = () => {
   const [withdrawingId, setWithdrawingId] = useState<number>();
   const [withdrawForm] = Form.useForm();
   const [withdrawing, setWithdrawing] = useState(false);
+
+  // 编辑/重新提交 Modal（我提交的 Tab）
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<RequestItem | null>(null);
+  const [isResubmit, setIsResubmit] = useState(false);
+  const [editForm] = Form.useForm();
+  const [orgList, setOrgList] = useState<Organization[]>([]);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   // 更新进度 Modal
   const [progressModalVisible, setProgressModalVisible] = useState(false);
@@ -83,6 +100,59 @@ const MyTasks: React.FC = () => {
   const openDetail = (record: RequestItem) => {
     setCurrentRow(record);
     setDrawerVisible(true);
+  };
+
+  // ── 编辑/重新提交（我提交的） ──
+  const openEdit = async (record: RequestItem, resubmit: boolean) => {
+    setEditingRecord(record);
+    setIsResubmit(resubmit);
+    setEditModalVisible(true);
+    editForm.setFieldsValue({
+      title: record.title,
+      description: record.description,
+      request_type: record.request_type,
+      research_scope: record.research_scope,
+      org_name: record.org_name,
+      org_type: record.org_type,
+      department: record.department,
+      researcher_id: record.researcher_id,
+      is_confidential: record.is_confidential,
+    });
+    try {
+      const orgs = await getOrganizations();
+      setOrgList(orgs);
+    } catch { /* noop */ }
+  };
+
+  const handleEditSubmit = async () => {
+    try {
+      const values = await editForm.validateFields();
+      setEditSubmitting(true);
+      if (isResubmit) {
+        await resubmitRequest(editingRecord!.id, values);
+        message.success('需求已重新提交');
+      } else {
+        await updateRequest(editingRecord!.id, values);
+        message.success('需求已更新');
+      }
+      setEditModalVisible(false);
+      submittedRef.current?.reload();
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(err?.message || '操作失败');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const handleCancelRequest = async (id: number) => {
+    try {
+      await cancelRequest(id);
+      message.success('需求已取消');
+      submittedRef.current?.reload();
+    } catch (err: any) {
+      message.error(err?.message || '取消失败');
+    }
   };
 
   // ── 接受任务 ──
@@ -308,16 +378,40 @@ const MyTasks: React.FC = () => {
     },
   ];
 
-  // ── 我提交的: 只读 ──
+  // ── 我提交的: 详情 + 编辑/重提/取消（自己代提的） ──
   const submittedColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
     {
       title: '操作',
       valueType: 'option',
       key: 'option',
-      width: 100,
+      width: 250,
       render: (_, entity) => [
         <a key="view" onClick={() => openDetail(entity)}>详情</a>,
+        entity.created_by === currentUserId && (entity.status === 'pending' || entity.status === 'withdrawn') && (
+          <a key="edit" onClick={() => openEdit(entity, false)}>编辑</a>
+        ),
+        entity.created_by === currentUserId && entity.status === 'withdrawn' && (
+          <a key="resubmit" style={{ color: '#1890ff' }} onClick={() => openEdit(entity, true)}>重新提交</a>
+        ),
+        entity.created_by === currentUserId && (entity.status === 'pending' || entity.status === 'withdrawn') && (
+          <Popconfirm
+            key="cancel"
+            title="确定要取消这个需求吗？"
+            description="取消后该需求将不再处理"
+            onConfirm={() => handleCancelRequest(entity.id)}
+          >
+            <a style={{ color: '#ff4d4f' }}>取消</a>
+          </Popconfirm>
+        ),
+        entity.status === 'completed' && entity.attachment_path && (
+          <FileDownloadButton
+            key="download"
+            mode="mine"
+            requestId={entity.id}
+            size="small"
+          />
+        ),
       ],
     },
   ];
@@ -410,6 +504,59 @@ const MyTasks: React.FC = () => {
           requestId={progressingId}
         />
       )}
+
+      {/* 编辑/重新提交 Modal（我提交的 Tab） */}
+      <Modal
+        title={isResubmit ? '修改并重新提交' : '编辑需求'}
+        open={editModalVisible}
+        onCancel={() => { setEditModalVisible(false); setEditingRecord(null); editForm.resetFields(); }}
+        onOk={handleEditSubmit}
+        confirmLoading={editSubmitting}
+        okText={isResubmit ? '重新提交' : '保存'}
+        width={640}
+        destroyOnClose
+      >
+        <ProForm form={editForm} submitter={false} layout="vertical">
+          <ProFormText name="title" label="需求标题" rules={[{ required: true }]} />
+          <ProFormTextArea name="description" label="需求描述" />
+          <ProFormSelect name="request_type" label="需求类型" options={REQUEST_TYPE_OPTIONS} rules={[{ required: true }]} />
+          <ProFormSelect name="research_scope" label="研究范围" options={RESEARCH_SCOPE_OPTIONS} />
+          <ProFormSelect
+            name="org_name"
+            label="机构名称"
+            rules={[{ required: true }]}
+            options={orgList.map((o) => ({ label: o.name, value: o.name }))}
+            fieldProps={{
+              onChange: (val: string) => {
+                const org = orgList.find((o) => o.name === val);
+                editForm.setFieldsValue({ org_type: org?.org_type, department: undefined });
+              },
+            }}
+          />
+          <ProFormDependency name={['org_type']}>
+            {({ org_type }) => {
+              const depts = ORG_DEPARTMENT_MAP[org_type];
+              if (!depts) return null;
+              return (
+                <ProFormSelect
+                  name="department"
+                  label="对接部门"
+                  options={depts.map((d) => ({ label: d, value: d }))}
+                />
+              );
+            }}
+          </ProFormDependency>
+          <ProFormSelect
+            name="researcher_id"
+            label="研究员"
+            rules={[{ required: true }]}
+            request={async () => {
+              const list = await getResearchers();
+              return list.map((r) => ({ label: r.display_name, value: r.id }));
+            }}
+          />
+        </ProForm>
+      </Modal>
 
       {/* 退回原因 Modal */}
       <Modal

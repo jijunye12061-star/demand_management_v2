@@ -297,19 +297,19 @@ def update(request_id: int, body: RequestUpdate, db: DB, user: CurrentUser):
         db.commit()
         return {"message": "ok"}
 
-    # sales: 仅可编辑自己创建的 pending/withdrawn 需求, 限定字段
-    if user.role == "sales":
+    # sales/researcher: 仅可编辑自己创建的 pending/withdrawn 需求, 限定字段
+    editable_fields = {
+        "title", "description", "request_type", "research_scope",
+        "org_name", "org_type", "department", "researcher_id", "is_confidential",
+        "parent_request_id",
+    }
+    if user.role in ("sales", "researcher"):
         if req.status not in ("pending", "withdrawn"):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "仅待处理或已退回状态可编辑")
         if user.id not in (req.sales_id, req.created_by):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "无权编辑此需求")
-        sales_editable = {
-            "title", "description", "request_type", "research_scope",
-            "org_name", "org_type", "department", "researcher_id", "is_confidential",
-            "parent_request_id",
-        }
         for k, v in updates.items():
-            if k not in sales_editable:
+            if k not in editable_fields:
                 continue
             if k == "is_confidential" and v is not None:
                 setattr(req, k, 1 if v else 0)
