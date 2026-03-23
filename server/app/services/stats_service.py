@@ -299,6 +299,7 @@ def get_downloads(db: Session) -> dict:
             func.count(func.distinct(DownloadLog.user_id)).label("unique_users"),
         )
         .join(Request, DownloadLog.request_id == Request.id)
+        .filter(Request.status != "deleted")
         .group_by(DownloadLog.request_id)
         .order_by(text("total_count DESC"))
         .limit(10)
@@ -313,8 +314,10 @@ def get_downloads(db: Session) -> dict:
             DownloadLog.org_name,
             DownloadLog.downloaded_at,
         )
-        .outerjoin(Request, DownloadLog.request_id == Request.id)
-        .outerjoin(User, DownloadLog.user_id == User.id)
+        .join(Request, DownloadLog.request_id == Request.id)
+        .join(User, DownloadLog.user_id == User.id)
+        .filter(Request.status != "deleted")
+        .filter(User.is_deleted == 0)
         .order_by(DownloadLog.downloaded_at.desc())
         .limit(50)
         .all()
