@@ -47,6 +47,8 @@ def export_requests(
 @router.get("/requests/preview")
 def export_preview(
     db: DB, admin: AdminUser,
+    current: int = Query(1, alias="current"),      # ← 新增
+    page_size: int = Query(20, alias="pageSize"),   # ← 新增
     request_type: str | None = None,
     research_scope: str | None = None,
     org_type: str | None = None,
@@ -62,7 +64,7 @@ def export_preview(
         research_scope=research_scope, org_type=org_type,
         researcher_id=researcher_id, sales_id=sales_id,
         keyword=keyword, date_from=date_from, date_to=date_to,
-        page=1, page_size=20,
+        page=current, page_size=page_size,  # ← 用传入值
     )
     items, total = query_requests(db, admin, params)
     return {"items": items, "total": total}
