@@ -122,6 +122,7 @@ const SubmitRequest: React.FC = () => {
             is_confidential: false,
             created_at: dayjs(),
             researcher_id: currentUser?.id,
+            visibility: 'public',
           }}
           layout="vertical"
           grid
@@ -207,7 +208,6 @@ const SubmitRequest: React.FC = () => {
             label="可见性"
             colProps={{ span: 12 }}
             options={VISIBILITY_OPTIONS}
-            initialValue="public"
           />
 
           {/* 需求类型联动区 */}
@@ -241,7 +241,7 @@ const SubmitRequest: React.FC = () => {
                     />
                   )}
 
-                  {!isProactiveLocked && (
+                  {!isProactiveLocked && request_type && (
                     <ProFormSelect
                       name="sales_id"
                       label="代提销售"
