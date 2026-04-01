@@ -93,13 +93,35 @@ def get_my_overview(db: Session, period: str, user_id: int) -> dict:
     counts = count_q.one()
 
     # 完成工时（主负责，按 completed_at）
-    main_q = db.query(func.coalesce(func.sum(Request.work_hours), 0)).filter(
-        Request.researcher_id == user_id,
-        Request.status == "completed",
-        Request.completed_at >= start,
-    )
-    main_q = add_end(main_q, Request.completed_at)
-    main_hours = main_q.scalar() or 0
+    # 对长线需求：work_hours 是总工时，需减去 period 开始前已通过进度更新计入的工时，
+    # 避免把之前 period 的工时重复计入本期。
+    completed_rows = add_end(
+        db.query(Request.id, Request.work_hours).filter(
+            Request.researcher_id == user_id,
+            Request.status == "completed",
+            Request.completed_at >= start,
+        ),
+        Request.completed_at,
+    ).all()
+
+    main_hours = 0.0
+    if completed_rows:
+        req_ids = [r.id for r in completed_rows]
+        wh_map = {r.id: (r.work_hours or 0) for r in completed_rows}
+        # period 开始前该用户在这些需求上的进度更新工时（已属于之前的 period）
+        pre_updates = (
+            db.query(RequestUpdate.request_id, func.sum(RequestUpdate.work_hours).label("s"))
+            .filter(
+                RequestUpdate.user_id == user_id,
+                RequestUpdate.is_deleted == 0,
+                RequestUpdate.created_at < start,
+                RequestUpdate.request_id.in_(req_ids),
+            )
+            .group_by(RequestUpdate.request_id)
+            .all()
+        )
+        pre_map = {r.request_id: (r.s or 0) for r in pre_updates}
+        main_hours = sum(max(0.0, wh_map[rid] - pre_map.get(rid, 0.0)) for rid in req_ids)
 
     # 协同完成工时（按 completed_at）
     collab_q = (
