@@ -92,7 +92,7 @@ def _scope_filter(user: User, scope: str | None):
         return and_(
             Request.status == "completed",
             Request.is_confidential == 0,
-            Request.request_type != "工具/系统开发",
+            Request.visibility == "public",
             ~has_completed_child,
             ~has_newer_sibling,
         )
@@ -181,6 +181,12 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
         q = q.filter(Request.created_at >= params.date_from)
     if params.date_to:
         q = q.filter(Request.created_at <= params.date_to + " 23:59:59")
+    if params.sub_type:
+        q = q.filter(Request.sub_type == params.sub_type)
+    if params.work_mode:
+        q = q.filter(Request.work_mode == params.work_mode)
+    if params.visibility:
+        q = q.filter(Request.visibility == params.visibility)
 
     total = q.count()
     rows = (

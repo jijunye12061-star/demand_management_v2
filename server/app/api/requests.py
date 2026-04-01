@@ -40,12 +40,16 @@ def list_requests(
     page: int = 1,
     page_size: int = 20,
     status_filter: str | None = Query(None, alias="status"),
+    sub_type: str | None = None,
+    work_mode: str | None = None,
+    visibility: str | None = None,
 ):
     params = RequestListParams(
         status=status_filter, request_type=request_type, research_scope=research_scope,
         org_type=org_type, researcher_id=researcher_id, sales_id=sales_id,
         keyword=keyword, date_from=date_from, date_to=date_to,
         scope=scope, page=page, page_size=page_size,
+        sub_type=sub_type, work_mode=work_mode, visibility=visibility,
     )
     items, total = query_requests(db, user, params)
     return {"items": items, "total": total}
@@ -67,7 +71,7 @@ def feed_stats(
     q = db.query(Request).filter(
         Request.status == "completed",
         Request.is_confidential == 0,
-        Request.request_type != "工具/系统开发",
+        Request.visibility == "public",
     )
     if request_type:
         q = q.filter(Request.request_type == request_type)
@@ -207,7 +211,7 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
 
 @router.post("")
 def create(body: RequestCreate, db: DB, user: CurrentUser):
-    from app.utils.constants import WORK_MODE_RULES
+    from app.utils.constants import WORK_MODE_RULES, SUB_TYPES
 
     # 确定 work_mode：locked 类型强制覆盖，user_select 类型使用前端传值
     rule = WORK_MODE_RULES.get(body.request_type)
@@ -216,9 +220,35 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
     else:
         work_mode = body.work_mode or "service"
 
-    org_name = body.org_name
-    org_type = body.org_type
-    department = body.department
+    # 校验 sub_type：如果该 request_type 有子类型定义，sub_type 填了就得合法
+    if body.sub_type is not None and body.request_type in SUB_TYPES:
+        if body.sub_type not in SUB_TYPES[body.request_type]:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"sub_type '{body.sub_type}' 不合法")
+
+    # 根据 work_mode 设置字段
+    if work_mode == "proactive":
+        org_name = None
+        org_type = body.org_type
+        department = body.department
+        sales_id = None
+        researcher_id = body.researcher_id or user.id
+        initial_status = "in_progress"
+    else:
+        # service 模式：org_name 必填
+        if not body.org_name:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "service 模式下机构名称不能为空")
+        org_name = body.org_name
+        org_type = body.org_type
+        department = body.department
+        sales_id = body.sales_id if body.sales_id else user.id
+        researcher_id = body.researcher_id
+        initial_status = "pending"
+
+    # visibility 规则：内部项目默认 internal，其余默认 public
+    if body.request_type == "内部项目":
+        visibility = "internal"
+    else:
+        visibility = body.visibility if body.visibility in ("public", "internal") else "public"
 
     # 校验 parent_request_id（revision 关联校验）
     # link_type 未传时默认 'sub'（手动关联衍生需求场景的兜底）
@@ -235,16 +265,16 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         org_name=org_name,
         org_type=org_type,
         department=department,
-        researcher_id=body.researcher_id,
+        researcher_id=researcher_id,
         is_confidential=1 if body.is_confidential else 0,
         sub_type=body.sub_type,
         work_mode=work_mode,
-        visibility=body.visibility,
-        sales_id=body.sales_id if body.sales_id else user.id,
+        visibility=visibility,
+        sales_id=sales_id,
         created_by=user.id,
         created_at=body.created_at or now_beijing(),
         updated_at=now_beijing(),
-        status="pending",
+        status=initial_status,
         parent_request_id=body.parent_request_id,
         link_type=final_link_type,
     )

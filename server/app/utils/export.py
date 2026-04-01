@@ -11,6 +11,8 @@ FULL_COLUMNS = [
     ("标题", "title", 30),
     ("需求描述", "description", 40),
     ("需求类型", "request_type", 14),
+    ("子类型", "sub_type", 12),
+    ("工作模式", "work_mode", 10),
     ("研究范畴", "research_scope", 12),
     ("机构", "org_name", 18),
     ("客户类型", "org_type", 10),
