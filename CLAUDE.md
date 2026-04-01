@@ -39,10 +39,17 @@ admin 可直接改任意状态
 
 **关键规则**:
 - **保密需求** (`is_confidential=1`): 仅 admin / created_by / sales_id / researcher_id 可见, 后端 WHERE 过滤
-- **Feed 模式**: 仅展示 `completed + !confidential`, 脱敏: org_name, department, work_hours, sales_id/name
+- **Feed 模式**: 仅展示 `completed + !confidential + visibility='public'`, 脱敏: org_name, department, work_hours, sales_id/name
 - **下载日志**: 销售弹窗选机构 → org_name 记"谁在下载"(非需求关联机构); 研究员/admin → org_name=null
 - **软删除**: requests 用 `status="deleted"`, users/orgs/teams 用 `is_deleted`
 - **机构权限链**: user.team_id → team_org_mapping → organizations (admin 无限制)
+
+**分类体系** (request_type 5种):
+- `专项报告` / `调研` / `基金筛选` / `定期报告` / `内部项目`
+- `sub_type`: 二级分类, 按一级类型有对应选项集, 可空
+- `work_mode`: `service`(销售服务需求) | `proactive`(研究员主动发起); 专项报告可选, 其余锁定为 service
+- `visibility`: `public`(进 Feed) | `internal`(不进 Feed); 内部项目默认 internal, 其余默认 public
+- `org_name` / `sales_id`: work_mode=proactive 或内部项目时可为空
 
 ## API 约定
 

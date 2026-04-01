@@ -50,11 +50,12 @@ CREATE TABLE requests
     title              TEXT    NOT NULL,
     description        TEXT,
     request_type       TEXT    NOT NULL,
+    sub_type           TEXT,                    -- 二级分类（可空）；按一级类型有对应选项
     research_scope     TEXT,
-    org_name           TEXT    NOT NULL,
+    org_name           TEXT,                    -- nullable：内部项目或研究员主动发起时可为空
     org_type           TEXT,
     department         TEXT,
-    sales_id           INTEGER NOT NULL REFERENCES users (id),
+    sales_id           INTEGER REFERENCES users (id),  -- nullable：内部项目或研究员主动发起时可为空
     researcher_id      INTEGER REFERENCES users (id),
     is_confidential    INTEGER   DEFAULT 0,
     status             TEXT      DEFAULT 'pending', -- pending | in_progress | completed | withdrawn | canceled | deleted
@@ -66,7 +67,8 @@ CREATE TABLE requests
     updated_at         TIMESTAMP,
     completed_at       TIMESTAMP,
     withdraw_reason    TEXT,                    -- 研究员退回时必填，重新提交后清空
-    is_self_initiated  INTEGER   DEFAULT 0,     -- 1=外出调研/研究员自主发起
+    work_mode          TEXT      DEFAULT 'service',   -- service=销售服务需求, proactive=研究员主动发起
+    visibility         TEXT      DEFAULT 'public',    -- public=显示在 Feed, internal=仅内部可见
     automation_hours   REAL      DEFAULT NULL,  -- 自动化工时（CA功能）
     parent_request_id  INTEGER   DEFAULT NULL REFERENCES requests (id),  -- 关联原始需求（衍生/修改来源）
     link_type          TEXT      DEFAULT NULL   -- 关联类型: 'revision'=修改迭代, 'sub'=衍生需求
@@ -185,7 +187,11 @@ CREATE INDEX idx_dl_user ON download_logs (user_id);
 
 - `users.password_version`: 1=SHA256(旧), 2=bcrypt(新)。登录时若为1，验证通过后自动升级为2。
 - `requests.withdraw_reason`: 研究员退回时必填，重新提交后清空。
-- `requests.is_self_initiated`: 1 表示外出调研或研究员自主发起的需求，不依赖销售提交。
+- `requests.sub_type`: 二级分类，可空；对应一级 `request_type` 有固定选项集（见业务规则 §2）。
+- `requests.work_mode`: 工作模式，`service`=销售服务需求（默认），`proactive`=研究员主动发起；专项报告类型由用户选择，其余类型固定为 `service`。
+- `requests.visibility`: 可见性，`public`=显示在 Feed（默认），`internal`=仅内部可见不出现在 Feed；内部项目默认 `internal`，其余类型默认 `public`。
+- `requests.org_name`: 客户机构名，内部项目或研究员主动发起时可为空（nullable）。
+- `requests.sales_id`: 关联销售用户 ID，内部项目或研究员主动发起时可为空（nullable）。
 - `requests.automation_hours`: 自动化辅助完成的工时，与 `work_hours`（人工工时）分开记录。
 - `requests.parent_request_id`: 指向关联的原始需求 ID，与 `link_type` 配合使用。
 - `requests.link_type`: 关联类型，`'revision'` = 修改迭代需求（从详情页"发起修改"创建），`'sub'` = 衍生需求（手动关联）。未关联时为 NULL。
@@ -214,10 +220,18 @@ CREATE INDEX IF NOT EXISTS idx_dl_time ON download_logs(downloaded_at);
 ## 5. 配置常量 (代码层, 非数据库)
 
 ```python
-# 需求类型 (当前值)
-# 历史改名: 传统报告定制→报告定制, 量化策略定制→量化策略开发, 系统定制→工具/系统开发,
-#           综合暂时兜底→其他, 外出调研→调研
-REQUEST_TYPES = ["基金筛选", "报告定制", "定期报告", "调研", "量化策略开发", "工具/系统开发", "其他"]
+# 需求类型 (当前值, 5种)
+# 历史变更: 原7种 → 合并/重命名为5种（报告定制+量化策略开发+工具/系统开发+其他 → 专项报告/内部项目）
+REQUEST_TYPES = ["专项报告", "调研", "基金筛选", "定期报告", "内部项目"]
+
+# 二级分类 (sub_type), 按一级类型分组
+SUB_TYPES = {
+    "专项报告": ["量化策略", "固收研究", "权益研究", "资产配置", "其他"],
+    "调研": ["实地调研", "电话调研", "其他"],
+    "基金筛选": [],   # 无二级分类
+    "定期报告": ["周报", "月报", "季报", "年报", "其他"],
+    "内部项目": ["系统/工具开发", "流程优化", "其他"],
+}
 
 # 研究范畴 (当前值)
 # 历史改名: 其他→综合/行业; 新增: 不涉及 (工具/系统开发类使用)
