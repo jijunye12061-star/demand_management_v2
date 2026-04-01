@@ -16,6 +16,11 @@ migrate_classification_redesign.py
 用法：
   python migrate_classification_redesign.py             # 实际执行
   python migrate_classification_redesign.py --dry-run   # 只预览，不写入
+
+⚠️ 事务限制：
+  SQLite Python 驱动在执行 DDL 语句（ALTER TABLE / CREATE TABLE / DROP TABLE）时会隐式提交当前事务。
+  因此，conn.rollback() 仅能回滚 DDL 之后执行的 DML 操作（INSERT / UPDATE / DELETE），无法回滚已提交的 DDL。
+  如迁移中途失败，DDL 变更已不可撤销，请使用备份文件（data/backups/data_backup_before_cr_migration.db）恢复数据库。
 """
 
 import argparse
@@ -399,8 +404,10 @@ def main():
     try:
         run_migration(conn, dry_run=args.dry_run)
     except Exception as e:
+        # 注意：此 rollback() 仅能回滚 DML 操作，DDL（ALTER TABLE / CREATE TABLE / DROP TABLE）已隐式提交，无法回滚。
+        # 若迁移失败且涉及 DDL，需使用备份文件恢复数据库。
         conn.rollback()
-        log("\n[ERROR] 迁移异常，已回滚: {}".format(e))
+        log("\n[ERROR] 迁移异常，已回滚 DML: {}".format(e))
         import traceback
         traceback.print_exc()
         sys.exit(1)
