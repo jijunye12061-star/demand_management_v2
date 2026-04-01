@@ -99,34 +99,21 @@ const MyStats: React.FC = () => {
             </Col>
           ))}
 
-          {/* 完成工时：按 completed_at 过滤，小字显示协同来源 */}
+          {/* 总工时 = 完成工时 + 协同工时 + 进行中更新工时 */}
           <Col xs={12} sm={6} md={5} lg={4}>
             <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Tooltip title="本期 completed_at 在此时间范围内完成的需求工时（主负责）">
-                <Statistic
-                  title="完成工时 (h)"
-                  value={overview?.completed_hours ?? '-'}
-                  valueStyle={{ color: '#13c2c2', fontWeight: 600, fontSize: 22 }}
-                />
-              </Tooltip>
-              {overview && overview.collab_hours > 0 && (
-                <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
-                  含协同 {overview.collab_hours}h
+              <Statistic
+                title="总工时 (h)"
+                value={overview != null
+                  ? Math.round((overview.completed_hours + overview.collab_hours + overview.update_hours) * 10) / 10
+                  : '-'}
+                valueStyle={{ color: '#13c2c2', fontWeight: 600, fontSize: 22 }}
+              />
+              {overview != null && overview.update_hours > 0 && (
+                <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
+                  其中进行中 {overview.update_hours}h 尚未完成
                 </div>
               )}
-            </Card>
-          </Col>
-
-          {/* 进行中工时：本期内填写的进度更新工时，仅统计仍在进行中的需求 */}
-          <Col xs={12} sm={6} md={5} lg={4}>
-            <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Tooltip title="本期内通过进度更新记录的工时（仅统计当前仍在进行中的需求，已完成的不重复计算）">
-                <Statistic
-                  title="进行中工时 (h)"
-                  value={overview?.update_hours ?? '-'}
-                  valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
-                />
-              </Tooltip>
             </Card>
           </Col>
         </Row>
