@@ -102,13 +102,15 @@ const MyStats: React.FC = () => {
           {/* 总工时 = 完成 + 协同 + 进行中，小字标注协同来源 */}
           <Col xs={12} sm={6} md={5} lg={4}>
             <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Statistic
-                title="总工时 (h)"
-                value={overview != null
-                  ? Math.round((overview.completed_hours + overview.collab_hours + overview.update_hours) * 10) / 10
-                  : '-'}
-                valueStyle={{ color: '#13c2c2', fontWeight: 600, fontSize: 22 }}
-              />
+              <Tooltip title="包含：已完成的需求工时 + 协同参与的工时 + 进行中需求已记录的工时">
+                <Statistic
+                  title="总工时 (h)"
+                  value={overview != null
+                    ? Math.round((overview.completed_hours + overview.collab_hours + overview.update_hours) * 10) / 10
+                    : '-'}
+                  valueStyle={{ color: '#13c2c2', fontWeight: 600, fontSize: 22 }}
+                />
+              </Tooltip>
               {overview != null && overview.collab_hours > 0 && (
                 <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
                   含协同 {overview.collab_hours}h
@@ -117,17 +119,16 @@ const MyStats: React.FC = () => {
             </Card>
           </Col>
 
-          {/* 进行中工时：还没完成的需求里已记录的工时 */}
+          {/* 进行中工时：hover 提示说明 */}
           <Col xs={12} sm={6} md={5} lg={4}>
             <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Statistic
-                title="其中，进行中 (h)"
-                value={overview?.update_hours ?? '-'}
-                valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
-              />
-              <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
-                还没完成的需求已记录工时
-              </div>
+              <Tooltip title="还没完成的需求里已记录的工时，完成后会并入总工时">
+                <Statistic
+                  title="其中，进行中 (h)"
+                  value={overview?.update_hours ?? '-'}
+                  valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
+                />
+              </Tooltip>
             </Card>
           </Col>
         </Row>
