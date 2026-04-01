@@ -10,13 +10,14 @@ Fixed issues:
 """
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, case, and_, text
+from sqlalchemy import func, case, and_, or_, text
 from sqlalchemy.orm import Session
 
 from app.models.request import Request
 from app.models.user import User
 from app.models.download_log import DownloadLog
 from app.models.collaborator import RequestCollaborator
+from app.models.progress_update import RequestUpdate
 
 BJT = timezone(timedelta(hours=8))
 
@@ -344,23 +345,30 @@ def get_downloads(db: Session) -> dict:
 
 # ── 以下内容追加到 server/app/services/stats_service.py 末尾 ──
 
-# ─── Weekly trend helper ──────────────────────────────────────────────────────
+# ─── Daily trend helper ───────────────────────────────────────────────────────
 
-def _weekly_trend(db: Session, filters: list) -> list[dict]:
-    """近 12 周每周完成件数。filters 为额外的 .filter() 条件列表。"""
+def _daily_trend(db: Session, filters: list) -> list[dict]:
+    """近 15 天每日完成件数，无数据的日期补 0。filters 为额外的 .filter() 条件列表。"""
     now = datetime.now(BJT)
-    start = (now - timedelta(weeks=12)).strftime("%Y-%m-%d %H:%M:%S")
+    start_dt = (now - timedelta(days=14)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = start_dt.strftime("%Y-%m-%d %H:%M:%S")
     q = (
         db.query(
-            func.strftime("%Y-W%W", Request.completed_at).label("week"),
+            func.strftime("%Y-%m-%d", Request.completed_at).label("day"),
             func.count(Request.id).label("count"),
         )
         .filter(Request.status == "completed", Request.completed_at >= start)
     )
     for f in filters:
         q = q.filter(f)
-    rows = q.group_by("week").order_by("week").all()
-    return [{"week": r.week, "count": r.count} for r in rows]
+    rows = q.group_by("day").order_by("day").all()
+    # 补全缺失日期为 0
+    counts = {r.day: r.count for r in rows}
+    result = []
+    for i in range(15):
+        d = (start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
+        result.append({"day": d, "count": counts.get(d, 0)})
+    return result
 
 
 # ─── Researcher detail ────────────────────────────────────────────────────────
@@ -397,6 +405,58 @@ def get_researcher_detail(db: Session, user_id: int) -> dict:
         )
         .first()
     )
+
+    # 进度更新工时：request_updates.work_hours（进行中需求的已记录工时，不限状态）
+    update_hours = (
+        db.query(func.coalesce(func.sum(RequestUpdate.work_hours), 0))
+        .join(Request, RequestUpdate.request_id == Request.id)
+        .filter(
+            RequestUpdate.user_id == user_id,
+            RequestUpdate.is_deleted == 0,
+            Request.status == "in_progress",
+        )
+        .scalar()
+    ) or 0
+
+    # 今日相关需求：今天完成 / 创建 / 有进度更新 的需求
+    today_start = datetime.now(BJT).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d")
+    today_requests_raw = (
+        db.query(Request)
+        .filter(
+            Request.researcher_id == user_id,
+            Request.status.not_in(["canceled", "deleted"]),
+            or_(
+                Request.completed_at >= today_start,
+                Request.created_at >= today_start,
+            ),
+        )
+        .order_by(Request.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    # 也包含今天有进度更新的进行中需求
+    updated_today_ids = set(
+        r.request_id for r in db.query(RequestUpdate.request_id)
+        .filter(
+            RequestUpdate.user_id == user_id,
+            RequestUpdate.is_deleted == 0,
+            RequestUpdate.created_at >= today_start,
+        ).all()
+    )
+    # 合并去重
+    seen_ids = {r.id for r in today_requests_raw}
+    extra_requests = []
+    if updated_today_ids - seen_ids:
+        extra_requests = (
+            db.query(Request)
+            .filter(
+                Request.id.in_(updated_today_ids - seen_ids),
+                Request.status.not_in(["canceled", "deleted"]),
+            )
+            .all()
+        )
+    all_today = today_requests_raw + extra_requests
+
     return {
         "summary": {
             "completed": summary.completed or 0,
@@ -405,10 +465,23 @@ def get_researcher_detail(db: Session, user_id: int) -> dict:
             "total_hours": round(summary.total_hours or 0, 1),
             "collab_count": collab_summary.collab_count or 0,
             "collab_hours": round(collab_summary.collab_hours or 0, 1),
+            "update_hours": round(update_hours, 1),
         },
-        "weekly_trend": _weekly_trend(db, [base]),
+        "daily_trend": _daily_trend(db, [base]),
         "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
         "org_distribution": [{"name": r.name, "value": r.value} for r in org_dist],
+        "today_requests": [
+            {
+                "id": r.id,
+                "title": r.title,
+                "request_type": r.request_type,
+                "status": r.status,
+                "work_hours": r.work_hours,
+                "completed_at": r.completed_at,
+                "created_at": r.created_at,
+            }
+            for r in all_today
+        ],
     }
 
 
@@ -430,7 +503,7 @@ def get_type_detail(db: Session, request_type: str) -> dict:
         .order_by(text("value DESC")).all()
     )
     return {
-        "weekly_trend": _weekly_trend(db, [base]),
+        "daily_trend": _daily_trend(db, [base]),
         "org_distribution": [{"name": r.name, "value": r.value} for r in org_dist],
         "researcher_distribution": [{"name": r.name, "value": r.value} for r in researcher_dist],
     }
@@ -459,7 +532,7 @@ def get_org_detail(db: Session, org_name: str) -> dict:
             "in_progress": summary.in_progress or 0,
             "total_hours": round(summary.total_hours or 0, 1),
         },
-        "weekly_trend": _weekly_trend(db, [base]),
+        "daily_trend": _daily_trend(db, [base]),
         "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
     }
 
@@ -493,7 +566,7 @@ def get_sales_detail(db: Session, user_id: int) -> dict:
             "pending": summary.pending or 0,
             "withdrawn": summary.withdrawn or 0,
         },
-        "weekly_trend": _weekly_trend(db, [base]),
+        "daily_trend": _daily_trend(db, [base]),
         "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
         "org_distribution": [{"name": r.name, "value": r.value} for r in org_dist],
     }

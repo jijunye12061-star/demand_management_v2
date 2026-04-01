@@ -173,15 +173,19 @@ export async function getMyOverview(period: string) {
   }>('/api/v1/stats/my-overview', { method: 'GET', params: { period } });
 }
 
-/** 研究员自身详细统计（周趋势+类型分布） */
+/** 研究员自身详细统计（日趋势+类型分布+今日需求） */
 export async function getMyDetail() {
   return request<{
     summary: {
       completed: number; in_progress: number; pending: number; total_hours: number;
-      collab_count: number; collab_hours: number;
+      collab_count: number; collab_hours: number; update_hours: number;
     };
-    weekly_trend: { week: string; count: number }[];
+    daily_trend: { day: string; count: number }[];
     type_distribution: { name: string; value: number }[];
     org_distribution: { name: string; value: number }[];
+    today_requests: {
+      id: number; title: string; request_type: string; status: string;
+      work_hours?: number; completed_at?: string; created_at?: string;
+    }[];
   }>('/api/v1/stats/my-detail', { method: 'GET' });
 }

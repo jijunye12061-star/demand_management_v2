@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   PageContainer,
   ProForm,
@@ -11,8 +11,8 @@ import {
   ProFormRadio,
 } from '@ant-design/pro-components';
 import { Alert, App, Form, Card } from 'antd';
-import { useModel, useNavigate } from '@umijs/max';
-import { getOrganizations, getResearchers, getSales, createRequest, searchLinkableRequests } from '@/services/api';
+import { useModel, useNavigate, useLocation } from '@umijs/max';
+import { getOrganizations, getResearchers, getSales, createRequest, resubmitRequest, getRequestDetail, searchLinkableRequests } from '@/services/api';
 import type { Organization, SalesUser } from '@/services/typings';
 import { REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, WORK_MODE_RULES, WORK_MODE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 const SubmitRequest: React.FC = () => {
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  const location = useLocation();
   const { modal, message } = App.useApp();
   const { initialState } = useModel('@@initialState');
   const currentUser = initialState?.currentUser;
@@ -30,6 +31,50 @@ const SubmitRequest: React.FC = () => {
   const [isAdminSales, setIsAdminSales] = useState(false);
   const [linkableOptions, setLinkableOptions] = useState<{ label: string; value: number }[]>([]);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [resubmitId, setResubmitId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('mode') !== 'resubmit') return;
+    const idStr = params.get('id');
+    if (!idStr) return;
+    const rid = Number(idStr);
+    setResubmitId(rid);
+    getRequestDetail(rid).then(async (data) => {
+      if (!data) return;
+      form.setFieldsValue({
+        title: data.title,
+        description: data.description,
+        request_type: data.request_type,
+        sub_type: data.sub_type,
+        research_scope: data.research_scope,
+        work_mode: data.work_mode || 'service',
+        is_confidential: !!data.is_confidential,
+        researcher_id: data.researcher_id,
+        sales_id: data.sales_id,
+        org_name: data.org_name,
+        org_type: data.org_type,
+        department: data.department,
+      });
+      // 预加载机构选项
+      if (data.sales_id) {
+        try {
+          const allSales = await getSales();
+          setSalesList(allSales);
+          const salesItem = allSales.find((s) => s.id === data.sales_id);
+          if (salesItem?.team_id) {
+            setSelectedTeamId(salesItem.team_id);
+            const orgs = await getOrganizations(salesItem.team_id);
+            setOrgList(orgs);
+          } else {
+            setIsAdminSales(true);
+            const orgs = await getOrganizations(undefined, true);
+            setOrgList(orgs);
+          }
+        } catch { /* noop */ }
+      }
+    });
+  }, []);
 
   const handleLinkableSearch = (keyword: string) => {
     clearTimeout(searchTimerRef.current);
@@ -46,6 +91,14 @@ const SubmitRequest: React.FC = () => {
   };
 
   const handleFinish = async (values: any) => {
+    // resubmit 模式
+    if (resubmitId !== null) {
+      await resubmitRequest(resubmitId, { ...values, created_at: undefined });
+      message.success('需求已重新提交');
+      navigate('/researcher/tasks');
+      return true;
+    }
+
     const payload = {
       ...values,
       created_at: values.created_at
@@ -113,7 +166,15 @@ const SubmitRequest: React.FC = () => {
   ];
 
   return (
-    <PageContainer title="代提需求">
+    <PageContainer title={resubmitId !== null ? '修改并重新提交' : '代提需求'}>
+      {resubmitId !== null && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="正在修改并重新提交退回的需求，提交后将重置为「待处理」状态"
+        />
+      )}
       <Card>
         <ProForm
           form={form}
@@ -127,7 +188,7 @@ const SubmitRequest: React.FC = () => {
           grid
           rowProps={{ gutter: [24, 0] }}
           submitter={{
-            searchConfig: { submitText: '立即提交', resetText: '重置' },
+            searchConfig: { submitText: resubmitId !== null ? '重新提交' : '立即提交', resetText: '重置' },
             resetButtonProps: { style: { marginLeft: 8 } },
           }}
         >

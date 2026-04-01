@@ -27,7 +27,7 @@ import {
 } from 'antd';
 import { MinusCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useModel } from '@umijs/max';
+import { useModel, history } from '@umijs/max';
 import {
   getRequests,
   getResearchers,
@@ -38,7 +38,6 @@ import {
   revokeAcceptRequest,
   cancelRequest,
   updateRequest,
-  resubmitRequest,
   getOrganizations,
 } from '@/services/api';
 import { getProgressUpdates } from '@/services/progressUpdate';
@@ -67,10 +66,9 @@ const MyTasks: React.FC = () => {
   const [withdrawForm] = Form.useForm();
   const [withdrawing, setWithdrawing] = useState(false);
 
-  // 编辑/重新提交 Modal（我提交的 Tab）
+  // 编辑 Modal（我提交的 Tab，不含重新提交——重新提交跳转页面）
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<RequestItem | null>(null);
-  const [isResubmit, setIsResubmit] = useState(false);
   const [editForm] = Form.useForm();
   const [orgList, setOrgList] = useState<Organization[]>([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -104,10 +102,9 @@ const MyTasks: React.FC = () => {
     setDrawerVisible(true);
   };
 
-  // ── 编辑/重新提交（我提交的） ──
-  const openEdit = async (record: RequestItem, resubmit: boolean) => {
+  // ── 编辑（我提交的，仅 pending 状态） ──
+  const openEdit = async (record: RequestItem) => {
     setEditingRecord(record);
-    setIsResubmit(resubmit);
     setEditModalVisible(true);
     editForm.setFieldsValue({
       title: record.title,
@@ -131,13 +128,8 @@ const MyTasks: React.FC = () => {
     try {
       const values = await editForm.validateFields();
       setEditSubmitting(true);
-      if (isResubmit) {
-        await resubmitRequest(editingRecord!.id, values);
-        message.success('需求已重新提交');
-      } else {
-        await updateRequest(editingRecord!.id, values);
-        message.success('需求已更新');
-      }
+      await updateRequest(editingRecord!.id, values);
+      message.success('需求已更新');
       setEditModalVisible(false);
       submittedRef.current?.reload();
     } catch (err: any) {
@@ -394,11 +386,11 @@ const MyTasks: React.FC = () => {
       width: 250,
       render: (_, entity) => [
         <a key="view" onClick={() => openDetail(entity)}>详情</a>,
-        entity.created_by === currentUserId && (entity.status === 'pending' || entity.status === 'withdrawn') && (
-          <a key="edit" onClick={() => openEdit(entity, false)}>编辑</a>
+        entity.created_by === currentUserId && entity.status === 'pending' && (
+          <a key="edit" onClick={() => openEdit(entity)}>编辑</a>
         ),
         entity.created_by === currentUserId && entity.status === 'withdrawn' && (
-          <a key="resubmit" style={{ color: '#1890ff' }} onClick={() => openEdit(entity, true)}>重新提交</a>
+          <a key="resubmit" style={{ color: '#1890ff' }} onClick={() => history.push(`/researcher/submit?mode=resubmit&id=${entity.id}`)}>重新提交</a>
         ),
         entity.created_by === currentUserId && (entity.status === 'pending' || entity.status === 'withdrawn') && (
           <Popconfirm
@@ -511,14 +503,14 @@ const MyTasks: React.FC = () => {
         />
       )}
 
-      {/* 编辑/重新提交 Modal（我提交的 Tab） */}
+      {/* 编辑 Modal（我提交的 Tab） */}
       <Modal
-        title={isResubmit ? '修改并重新提交' : '编辑需求'}
+        title="编辑需求"
         open={editModalVisible}
         onCancel={() => { setEditModalVisible(false); setEditingRecord(null); editForm.resetFields(); }}
         onOk={handleEditSubmit}
         confirmLoading={editSubmitting}
-        okText={isResubmit ? '重新提交' : '保存'}
+        okText="保存"
         width={640}
         destroyOnClose
       >
