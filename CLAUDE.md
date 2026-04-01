@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-前后端分离的研究需求管理平台，服务金融投研部门。销售提交需求 → 研究员接单完成上传附件 → 管理员总览。从 Streamlit 重构而来，复用原有 SQLite 数据。
+前后端分离的研究需求管理平台，服务金融投研部门。销售提交需求 → 研究员接单完成上传附件 → 管理员总览。
 
 - **后端**: FastAPI + SQLAlchemy 2.0 (同步) + SQLite + Pydantic v2 + APScheduler
 - **前端**: React 18 + Umi 4 / @umijs/max + Ant Design Pro v6 + ProComponents + TypeScript
@@ -21,7 +21,7 @@ docs/system/         # 永久系统文档 (真相源, AI 每次读这里)
 docs/features/       # 活跃 PRD, YYYYMM-name.md, 完成后删除
 ```
 
-数据库: users, requests, teams, organizations, team_org_mapping, download_logs, system_config — 详见 `docs/system/database.md`
+数据库详见 `docs/system/database.md`
 
 ## 核心业务模型
 
@@ -69,8 +69,7 @@ uvicorn app.main:app --reload --port 8000
 cd web && npm run dev
 ```
 
-开发阶段前后端均通过本地服务调试，不使用 NSSM 服务管理。后端默认 `http://localhost:8000`，前端默认 `http://localhost:8001`（或 Umi 分配的端口）。
-管理员账号为`{"username":"sangdazhuoma","password":"admin123"}`
+管理员账号: `{"username":"sangdazhuoma","password":"admin123"}`
 
 ### 生产环境（服务器 10.189.26.145）
 ```bash
@@ -83,8 +82,6 @@ $env:REACT_APP_ENV="prod"; npm run build
 # Nginx 配置变更后重启
 nssm restart OpenSpec-Nginx
 ```
-
-开发完成并验证后，将代码同步到服务器，执行生产构建/重启部署。
 
 ### 注意事项
 - 验证代码时，不要使用 `python -c "..."` 内联多行脚本，而是先写入临时 .py 文件再执行，避免触发 Claude Code 的 newline+comment 安全检查。
@@ -118,6 +115,6 @@ nssm restart OpenSpec-Nginx
 
 ## 待实现模块
 
-1. **知识库**: 6 张新表, 文件上传+元数据标注+多维筛选+下载日志 → `docs/features/202603-knowledge-base.md`
+1. **知识库**: `docs/features/202603-knowledge-base.md`
 2. **研究员工作量上限**: system_config + researcher_max_tasks + 409 溢出拦截
 3. **多文件附件**: 存储结构已预留 (`uploads/{request_id}/`)
