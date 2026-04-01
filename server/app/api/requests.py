@@ -244,11 +244,9 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         researcher_id = body.researcher_id
         initial_status = "pending"
 
-    # visibility 规则：内部项目默认 internal，其余默认 public
-    if body.request_type == "内部项目":
-        visibility = "internal"
-    else:
-        visibility = body.visibility if body.visibility in ("public", "internal") else "public"
+    # visibility 规则：默认值逻辑，内部项目默认 internal，用户可覆盖
+    default_visibility = "internal" if body.request_type == "内部项目" else "public"
+    visibility = body.visibility if body.visibility in ("public", "internal") else default_visibility
 
     # 校验 parent_request_id（revision 关联校验）
     # link_type 未传时默认 'sub'（手动关联衍生需求场景的兜底）
