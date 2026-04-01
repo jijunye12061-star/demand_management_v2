@@ -90,7 +90,7 @@ export async function withdrawRequest(id: number, reason: string) {
 
 export async function completeRequest(
   id: number,
-  data: { result_note?: string; work_hours?: number; automation_hours?: number; attachment?: File; collaborators?: CollaboratorInput[] },
+  data: { result_note?: string; work_hours?: number; automation_hours?: number; attachment?: File; collaborators?: CollaboratorInput[]; completed_at?: string },
 ) {
   const formData = new FormData();
   if (data.result_note) formData.append('result_note', data.result_note);
@@ -98,6 +98,7 @@ export async function completeRequest(
   if (data.automation_hours !== undefined && data.automation_hours !== null) {
     formData.append('automation_hours', String(data.automation_hours));
   }
+  if (data.completed_at) formData.append('completed_at', data.completed_at);
   if (data.attachment) formData.append('attachment', data.attachment);
   if (data.collaborators?.length) {
     formData.append('collaborators', JSON.stringify(data.collaborators));
@@ -163,4 +164,24 @@ export async function getFeedStats(params?: Record<string, any>) {
     method: 'GET',
     params,
   });
+}
+
+/** 研究员自身统计概览 */
+export async function getMyOverview(period: string) {
+  return request<{
+    total: number; pending: number; in_progress: number; completed: number; total_hours: number;
+  }>('/api/v1/stats/my-overview', { method: 'GET', params: { period } });
+}
+
+/** 研究员自身详细统计（周趋势+类型分布） */
+export async function getMyDetail() {
+  return request<{
+    summary: {
+      completed: number; in_progress: number; pending: number; total_hours: number;
+      collab_count: number; collab_hours: number;
+    };
+    weekly_trend: { week: string; count: number }[];
+    type_distribution: { name: string; value: number }[];
+    org_distribution: { name: string; value: number }[];
+  }>('/api/v1/stats/my-detail', { method: 'GET' });
 }

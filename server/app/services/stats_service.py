@@ -42,10 +42,10 @@ def _period_start(period: str) -> str:
 
 # ─── P6-1: Overview ──────────────────────────────────────────────────────────
 
-def get_overview(db: Session, period: str) -> dict:
+def get_overview(db: Session, period: str, researcher_id: int | None = None) -> dict:
     start = _period_start(period)
     # FIX #1: 排除 canceled (软删除不计入总览)
-    rows = db.query(
+    q = db.query(
         func.count(Request.id).label("total"),
         func.sum(case((Request.status == "pending", 1), else_=0)).label("pending"),
         func.sum(case((Request.status == "in_progress", 1), else_=0)).label("in_progress"),
@@ -56,14 +56,20 @@ def get_overview(db: Session, period: str) -> dict:
     ).filter(
         Request.created_at >= start,
         Request.status != "canceled",
-    ).one()
+    )
+    if researcher_id is not None:
+        q = q.filter(Request.researcher_id == researcher_id)
+    rows = q.one()
 
-    collab_hours = (
+    collab_q = (
         db.query(func.coalesce(func.sum(RequestCollaborator.work_hours), 0))
         .join(Request, RequestCollaborator.request_id == Request.id)
         .filter(Request.status == "completed", Request.created_at >= start)
-        .scalar()
     )
+    if researcher_id is not None:
+        collab_q = collab_q.filter(RequestCollaborator.user_id == researcher_id)
+    collab_hours = collab_q.scalar()
+
     return {
         "total": rows.total or 0,
         "pending": rows.pending or 0,

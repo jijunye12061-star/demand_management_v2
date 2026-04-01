@@ -42,6 +42,10 @@ def list_requests(
     status_filter: str | None = Query(None, alias="status"),
     sub_type: str | None = None,
     work_mode: str | None = None,
+    completed_at_from: str | None = None,
+    completed_at_to: str | None = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
 ):
     params = RequestListParams(
         status=status_filter, request_type=request_type, research_scope=research_scope,
@@ -49,6 +53,8 @@ def list_requests(
         keyword=keyword, date_from=date_from, date_to=date_to,
         scope=scope, page=page, page_size=page_size,
         sub_type=sub_type, work_mode=work_mode,
+        completed_at_from=completed_at_from, completed_at_to=completed_at_to,
+        sort_by=sort_by, sort_order=sort_order,
     )
     items, total = query_requests(db, user, params)
     return {"items": items, "total": total}
@@ -373,6 +379,7 @@ async def complete(
     result_note: str = Form(None),
     work_hours: float = Form(None),
     automation_hours: float = Form(None),
+    completed_at: str = Form(None),   # 可选历史完成时间，格式 YYYY-MM-DD
     attachment: UploadFile | None = File(None),
     collaborators: str = Form(None),  # JSON: [{"user_id": 2, "work_hours": 3.0}, ...]
 ):
@@ -387,7 +394,7 @@ async def complete(
         attachment_path = f"uploads/{request_id}/{attachment.filename}"
 
     try:
-        complete_request(db, request_id, user, result_note, work_hours, attachment_path, automation_hours)
+        complete_request(db, request_id, user, result_note, work_hours, attachment_path, automation_hours, completed_at)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
 

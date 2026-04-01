@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.core.deps import DB, AdminUser
+from app.core.deps import DB, AdminUser, CurrentUser
 from app.services.stats_service import (
     get_overview, get_researcher_ranking, get_researcher_matrix,
     get_type_matrix, get_org_matrix, get_sales_matrix,
@@ -19,6 +19,12 @@ def overview(db: DB, admin: AdminUser, period: str = "month"):
     return get_overview(db, period)
 
 
+@router.get("/my-overview")
+def my_overview(db: DB, user: CurrentUser, period: str = "month"):
+    """研究员查看自身统计概览（按 researcher_id + 协作双维度）"""
+    return get_overview(db, period, researcher_id=user.id)
+
+
 @router.get("/researcher-ranking")
 def researcher_ranking(db: DB, admin: AdminUser, period: str = "month"):
     return get_researcher_ranking(db, period)
@@ -32,6 +38,12 @@ def researcher_matrix(db: DB, admin: AdminUser):
 @router.get("/researcher-detail")
 def researcher_detail(db: DB, admin: AdminUser, user_id: int):
     return get_researcher_detail(db, user_id)
+
+
+@router.get("/my-detail")
+def my_detail(db: DB, user: CurrentUser):
+    """研究员查看自身详细统计（周趋势+类型分布）"""
+    return get_researcher_detail(db, user.id)
 
 
 @router.get("/type-matrix")

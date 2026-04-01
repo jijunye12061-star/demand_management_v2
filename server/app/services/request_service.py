@@ -184,10 +184,17 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
         q = q.filter(Request.sub_type == params.sub_type)
     if params.work_mode:
         q = q.filter(Request.work_mode == params.work_mode)
+    if params.completed_at_from:
+        q = q.filter(Request.completed_at >= params.completed_at_from)
+    if params.completed_at_to:
+        q = q.filter(Request.completed_at <= params.completed_at_to + " 23:59:59")
+
+    sort_col = Request.completed_at if params.sort_by == "completed_at" else Request.created_at
+    order_clause = sort_col.asc() if params.sort_order == "asc" else sort_col.desc()
 
     total = q.count()
     rows = (
-        q.order_by(Request.created_at.desc())
+        q.order_by(order_clause)
         .offset((params.page - 1) * params.page_size)
         .limit(params.page_size)
         .all()
@@ -274,6 +281,7 @@ def complete_request(
     work_hours: float | None = None,
     attachment_path: str | None = None,
     automation_hours: float | None = None,
+    completed_at: str | None = None,
 ) -> Request:
     req = db.get(Request, request_id)
     if not req:
@@ -281,7 +289,7 @@ def complete_request(
     if req.status != "in_progress" or req.researcher_id != user.id:
         raise ValueError("无法完成此需求")
     req.status = "completed"
-    req.completed_at = now_beijing()
+    req.completed_at = completed_at or now_beijing()
     req.updated_at = now_beijing()
     if result_note is not None:
         req.result_note = result_note
@@ -320,11 +328,13 @@ def resubmit_request(db: Session, request_id: int, user: User, updates: dict) ->
         raise ValueError("仅退回状态可重新提交")
     if user.role != "admin" and user.id not in (req.sales_id, req.created_by):
         raise ValueError("无权重新提交此需求")
-    editable = {"title", "description", "request_type", "research_scope",
+    editable = {"title", "description", "request_type", "sub_type", "research_scope",
                 "org_name", "org_type", "department", "researcher_id"}
     for k, v in updates.items():
         if k in editable and v is not None:
             setattr(req, k, v)
+    if "is_confidential" in updates and updates["is_confidential"] is not None:
+        req.is_confidential = 1 if updates["is_confidential"] else 0
     req.status = "pending"
     req.withdraw_reason = None
     req.updated_at = now_beijing()

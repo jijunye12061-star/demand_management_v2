@@ -80,14 +80,21 @@ const ResearcherRequestFeed: React.FC = () => {
       },
     },
     { title: '研究员', dataIndex: 'researcher_name', hideInSearch: true },
-    { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', hideInSearch: true, sorter: true },
+    { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', hideInSearch: true, sorter: true, defaultSortOrder: 'descend' },
     {
-      title: '日期范围',
+      title: '创建日期',
       dataIndex: 'dateRange',
       valueType: 'dateRange',
       hideInTable: true,
+      search: { transform: (value) => ({ date_from: value[0], date_to: value[1] }) },
+    },
+    {
+      title: '完成日期',
+      dataIndex: 'completedRange',
+      valueType: 'dateRange',
+      hideInTable: true,
       search: {
-        transform: (value) => ({ date_from: value[0], date_to: value[1] }),
+        transform: (value) => ({ completed_at_from: value[0], completed_at_to: value[1] }),
       },
     },
     {
@@ -119,7 +126,16 @@ return (
         actionRef={actionRef}
         rowKey="id"
         search={{ labelWidth: 100 }}
-        request={async (params) => getRequests({ ...params, scope: 'feed' })}
+        request={async (params, sort) => {
+          const sortField = Object.keys(sort || {})[0];
+          const sortOrder = sortField && sort[sortField] ? (sort[sortField] === 'ascend' ? 'asc' : 'desc') : 'desc';
+          return getRequests({
+            ...params,
+            scope: 'feed',
+            sort_by: sortField || 'completed_at',
+            sort_order: sortOrder,
+          });
+        }}
         columns={columns}
         onSubmit={(params) => {
           const p: Record<string, any> = { ...params };
@@ -127,7 +143,12 @@ return (
             p.date_from = params.dateRange[0];
             p.date_to = params.dateRange[1];
           }
+          if (params.completedRange?.length === 2) {
+            p.completed_at_from = params.completedRange[0];
+            p.completed_at_to = params.completedRange[1];
+          }
           delete p.dateRange;
+          delete p.completedRange;
           Object.keys(p).forEach((k) => { if (!p[k]) delete p[k]; });
           setChartFilter(p);
         }}

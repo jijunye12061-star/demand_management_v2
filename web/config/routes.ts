@@ -26,7 +26,8 @@
       {path: '/researcher', redirect: '/researcher/tasks'},
       {path: '/researcher/submit', name: '提交需求', component: './Researcher/SubmitRequest'},
       {path: '/researcher/tasks', name: '我的任务', component: './Researcher/MyTasks'},
-      {path: '/researcher/templates', name: '需求模板', component: './Researcher/Templates'},  // ← 新增
+      {path: '/researcher/templates', name: '需求模板', component: './Researcher/Templates'},
+      {path: '/researcher/stats', name: '数据统计', component: './Researcher/MyStats'},
       {path: '/researcher/feed', name: '需求动态', component: './Researcher/RequestFeed'},
     ],
   },

@@ -3,7 +3,7 @@ import { PageContainer, ProTable, ProForm, ProFormText, ProFormTextArea, ProForm
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Tag, Popconfirm, Modal, Form, App } from 'antd';
 import {
-  getRequests, cancelRequest, updateRequest, resubmitRequest,
+  getRequests, cancelRequest, updateRequest,
   getOrganizations, getResearchers,
 } from '@/services/api';
 import type { RequestItem, Organization } from '@/services/typings';
@@ -11,6 +11,7 @@ import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, RESEARCH_SCOPE_OPT
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
 import StatsCards from '@/components/StatsCards';
+import { history } from '@umijs/max';
 
 const MyRequests: React.FC = () => {
   const { message } = App.useApp();
@@ -22,10 +23,9 @@ const MyRequests: React.FC = () => {
   const [allMineRequests, setAllMineRequests] = useState<RequestItem[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // 编辑/重新提交 Modal
+  // 编辑 Modal（不含重新提交，重提跳转到 SubmitRequest 页面）
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<RequestItem | null>(null);
-  const [isResubmit, setIsResubmit] = useState(false);
   const [editForm] = Form.useForm();
   const [orgList, setOrgList] = useState<Organization[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -44,9 +44,8 @@ const MyRequests: React.FC = () => {
 
   useEffect(() => { fetchStatsData(); }, []);
 
-  const openEdit = async (record: RequestItem, resubmit: boolean) => {
+  const openEdit = async (record: RequestItem) => {
     setEditingRecord(record);
-    setIsResubmit(resubmit);
     setEditModalVisible(true);
     editForm.setFieldsValue({
       title: record.title,
@@ -71,15 +70,8 @@ const MyRequests: React.FC = () => {
     try {
       const values = await editForm.validateFields();
       setSubmitting(true);
-
-      if (isResubmit) {
-        await resubmitRequest(editingRecord!.id, values);
-        message.success('需求已重新提交');
-      } else {
-        await updateRequest(editingRecord!.id, values);
-        message.success('需求已更新');
-      }
-
+      await updateRequest(editingRecord!.id, values);
+      message.success('需求已更新');
       setEditModalVisible(false);
       actionRef.current?.reload();
       fetchStatsData();
@@ -193,13 +185,13 @@ const MyRequests: React.FC = () => {
         <a key="view" onClick={() => { setCurrentRow(entity); setDrawerVisible(true); }}>
           详情
         </a>,
-        // 编辑: pending/withdrawn 可用
-        (entity.status === 'pending' || entity.status === 'withdrawn') && (
-          <a key="edit" onClick={() => openEdit(entity, false)}>编辑</a>
+        // 编辑: pending 可用（不含 withdrawn，withdrawn 用重新提交）
+        entity.status === 'pending' && (
+          <a key="edit" onClick={() => openEdit(entity)}>编辑</a>
         ),
-        // 重新提交: 仅 withdrawn
+        // 重新提交: 仅 withdrawn，跳转到整页表单
         entity.status === 'withdrawn' && (
-          <a key="resubmit" style={{ color: '#1890ff' }} onClick={() => openEdit(entity, true)}>
+          <a key="resubmit" style={{ color: '#1890ff' }} onClick={() => history.push(`/sales/submit?mode=resubmit&id=${entity.id}`)}>
             重新提交
           </a>
         ),
@@ -248,14 +240,14 @@ const MyRequests: React.FC = () => {
         downloadMode="mine"
       />
 
-      {/* 编辑/重新提交 Modal */}
+      {/* 编辑 Modal */}
       <Modal
-        title={isResubmit ? '修改并重新提交' : '编辑需求'}
+        title="编辑需求"
         open={editModalVisible}
         onCancel={() => { setEditModalVisible(false); setEditingRecord(null); editForm.resetFields(); }}
         onOk={handleEditSubmit}
         confirmLoading={submitting}
-        okText={isResubmit ? '重新提交' : '保存'}
+        okText="保存"
         width={640}
         destroyOnClose
       >

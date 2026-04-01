@@ -91,6 +91,10 @@ class RequestListParams(BaseModel):
     page_size: int = 20
     sub_type: str | None = None
     work_mode: str | None = None
+    completed_at_from: str | None = None
+    completed_at_to: str | None = None
+    sort_by: str = "created_at"   # created_at | completed_at
+    sort_order: str = "desc"      # desc | asc
 
 
 class WithdrawRequest(BaseModel):
@@ -101,11 +105,13 @@ class ResubmitRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     request_type: str | None = None
+    sub_type: str | None = None
     research_scope: str | None = None
     org_name: str | None = None
     org_type: str | None = None
     department: str | None = None
     researcher_id: int | None = None
+    is_confidential: bool | None = None
 
 
 class ReassignRequest(BaseModel):

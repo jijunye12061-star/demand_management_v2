@@ -123,11 +123,16 @@ const Requests: React.FC = () => {
       ),
     },
     { title: '工时', dataIndex: 'work_hours', width: 60, hideInSearch: true },
-    { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 150, hideInSearch: true },
+    { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 150, hideInSearch: true, sorter: true },
+    { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', width: 150, hideInSearch: true, sorter: true },
     { title: '最后更新', dataIndex: 'updated_at', valueType: 'dateTime', width: 160, hideInSearch: true },
     {
-      title: '日期范围', dataIndex: 'dateRange', valueType: 'dateRange', hideInTable: true,
+      title: '创建日期', dataIndex: 'dateRange', valueType: 'dateRange', hideInTable: true,
       search: { transform: (v) => ({ date_from: v[0], date_to: v[1] }) },
+    },
+    {
+      title: '完成日期', dataIndex: 'completedRange', valueType: 'dateRange', hideInTable: true,
+      search: { transform: (v) => ({ completed_at_from: v[0], completed_at_to: v[1] }) },
     },
     {
       title: '操作', valueType: 'option', width: 150, fixed: 'right',
@@ -150,7 +155,15 @@ const Requests: React.FC = () => {
         columns={columns}
         rowKey="id"
         scroll={{ x: 1600 }}
-        request={async (params) => getRequests({ ...params, current: params.current, pageSize: params.pageSize })}
+        request={async (params, sort) => {
+          const sortField = Object.keys(sort || {})[0];
+          const sortOrder = sortField && sort[sortField] ? (sort[sortField] === 'ascend' ? 'asc' : 'desc') : 'desc';
+          return getRequests({
+            ...params,
+            sort_by: sortField || 'created_at',
+            sort_order: sortOrder,
+          });
+        }}
         pagination={{ pageSize: 15 }}
       />
 

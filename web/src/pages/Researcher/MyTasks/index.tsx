@@ -23,8 +23,10 @@ import {
   Button,
   Select,
   Space,
+  DatePicker,
 } from 'antd';
 import { MinusCircleOutlined, UploadOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useModel } from '@umijs/max';
 import {
   getRequests,
@@ -215,6 +217,9 @@ const MyTasks: React.FC = () => {
         automation_hours: values.automation_hours,
         attachment: fileList[0]?.originFileObj,
         collaborators: values.collaborators || [],
+        completed_at: values.completed_at
+          ? dayjs(values.completed_at).format('YYYY-MM-DD') + ' 23:59:59'
+          : undefined,
       });
       message.success('任务已完成');
       setCompleteModalVisible(false);
@@ -625,6 +630,13 @@ const MyTasks: React.FC = () => {
           <Form.Item name="automation_hours" label="自动化建设工时（小时）">
             <InputNumber min={0} step={0.5} precision={1} style={{ width: '100%' }}
               placeholder="选填，如本次涉及自动化流程建设" />
+          </Form.Item>
+          <Form.Item name="completed_at" label="完成时间（可补录历史）">
+            <DatePicker
+              style={{ width: '100%' }}
+              disabledDate={(d) => d.isAfter(dayjs())}
+              placeholder="默认为当前时间，可选择历史日期"
+            />
           </Form.Item>
 
           {/* 协作研究员（可选） */}

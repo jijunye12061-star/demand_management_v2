@@ -91,17 +91,24 @@ const RequestFeed: React.FC = () => {
       valueType: 'dateTime',
       hideInSearch: true,
       sorter: true,
+      defaultSortOrder: 'descend',
     },
     {
-      title: '日期范围',
+      title: '创建日期',
       dataIndex: 'dateRange',
       valueType: 'dateRange',
       hideInTable: true,
       search: {
-        transform: (value) => ({
-          date_from: value[0],
-          date_to: value[1],
-        }),
+        transform: (value) => ({ date_from: value[0], date_to: value[1] }),
+      },
+    },
+    {
+      title: '完成日期',
+      dataIndex: 'completedRange',
+      valueType: 'dateRange',
+      hideInTable: true,
+      search: {
+        transform: (value) => ({ completed_at_from: value[0], completed_at_to: value[1] }),
       },
     },
     {
@@ -135,17 +142,29 @@ const RequestFeed: React.FC = () => {
         actionRef={actionRef}
         rowKey="id"
         search={{ labelWidth: 100 }}
-        request={async (params) => getRequests({ ...params, scope: 'feed' })}
+        request={async (params, sort) => {
+          const sortField = Object.keys(sort || {})[0];
+          const sortOrder = sortField && sort[sortField] ? (sort[sortField] === 'ascend' ? 'asc' : 'desc') : 'desc';
+          return getRequests({
+            ...params,
+            scope: 'feed',
+            sort_by: sortField || 'completed_at',
+            sort_order: sortOrder,
+          });
+        }}
         columns={columns}
         onSubmit={(params) => {
-          // 同步筛选条件到图表（处理日期范围转换）
           const p: Record<string, any> = { ...params };
           if (params.dateRange?.length === 2) {
             p.date_from = params.dateRange[0];
             p.date_to = params.dateRange[1];
           }
+          if (params.completedRange?.length === 2) {
+            p.completed_at_from = params.completedRange[0];
+            p.completed_at_to = params.completedRange[1];
+          }
           delete p.dateRange;
-          // 清除空值
+          delete p.completedRange;
           Object.keys(p).forEach((k) => { if (!p[k]) delete p[k]; });
           setChartFilter(p);
         }}

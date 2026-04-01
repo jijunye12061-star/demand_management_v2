@@ -11,7 +11,7 @@ import {
 } from '@ant-design/pro-components';
 import { Form, Card, App, Alert } from 'antd';
 import { useNavigate, useLocation } from '@umijs/max';
-import { getOrganizations, getResearchers, createRequest, searchLinkableRequests, getRequestDetail } from '@/services/api';
+import { getOrganizations, getResearchers, createRequest, resubmitRequest, searchLinkableRequests, getRequestDetail } from '@/services/api';
 import type { Organization, RequestItem } from '@/services/typings';
 import { SALES_REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
@@ -26,11 +26,41 @@ const SubmitRequest: React.FC = () => {
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [parentRequest, setParentRequest] = useState<RequestItem | null>(null);
   const [linkType, setLinkType] = useState<string | null>(null);
+  // resubmit 模式
+  const [resubmitId, setResubmitId] = useState<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
+    const mode = params.get('mode');
+    const idStr = params.get('id');
     const parentId = params.get('parent_id');
     const lt = params.get('link_type');
+
+    // resubmit 模式：预填退回需求
+    if (mode === 'resubmit' && idStr) {
+      const rid = Number(idStr);
+      setResubmitId(rid);
+      getRequestDetail(rid).then((data) => {
+        if (!data) return;
+        form.setFieldsValue({
+          title: data.title,
+          description: data.description,
+          request_type: data.request_type,
+          sub_type: data.sub_type,
+          research_scope: data.research_scope,
+          org_name: data.org_name,
+          org_type: data.org_type,
+          department: data.department,
+          researcher_id: data.researcher_id,
+          is_confidential: !!data.is_confidential,
+        });
+        // 如机构列表未加载，预加载以支持部门联动
+        getOrganizations().then((orgs) => setOrgList(orgs));
+      });
+      return;
+    }
+
+    // revision 模式：发起修改（已有逻辑）
     if (!parentId || !lt) return;
     getRequestDetail(Number(parentId)).then((data) => {
       if (!data) return;
@@ -70,8 +100,19 @@ const SubmitRequest: React.FC = () => {
   };
 
   const handleFinish = async (values: any) => {
-    // 从 URL 来的是 revision，手动选了 parent 的是 sub，否则无关联
-    // linkType state 由 useEffect(URL params) 和 onChange 维护，比 values 更可靠
+    // resubmit 模式
+    if (resubmitId !== null) {
+      const payload = {
+        ...values,
+        created_at: undefined, // resubmit 不传 created_at
+      };
+      await resubmitRequest(resubmitId, payload);
+      message.success('需求已重新提交');
+      navigate('/sales/mine');
+      return true;
+    }
+
+    // 新建 / revision 模式
     let resolvedLinkType: string | undefined;
     if (parentRequest) resolvedLinkType = 'revision';
     else if (values.parent_request_id) resolvedLinkType = linkType || 'sub';
@@ -103,8 +144,19 @@ const SubmitRequest: React.FC = () => {
     return false;
   };
 
+  const pageTitle = resubmitId !== null ? '修改并重新提交' : parentRequest ? '发起修改需求' : '提交需求';
+  const submitText = resubmitId !== null ? '重新提交' : '立即提交';
+
   return (
-    <PageContainer title={parentRequest ? '发起修改需求' : '提交需求'}>
+    <PageContainer title={pageTitle}>
+      {resubmitId !== null && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="正在修改并重新提交退回的需求，修改后将重置为「待处理」状态"
+        />
+      )}
       {parentRequest && (
         <Alert
           type="info"
@@ -122,7 +174,7 @@ const SubmitRequest: React.FC = () => {
           grid
           rowProps={{ gutter: [24, 0] }}
           submitter={{
-            searchConfig: { submitText: '立即提交', resetText: '重置' },
+            searchConfig: { submitText: submitText, resetText: '重置' },
             resetButtonProps: { style: { marginLeft: 8 } },
           }}
         >
