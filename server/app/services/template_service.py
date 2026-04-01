@@ -47,6 +47,13 @@ def create_template(db: Session, researcher_id: int, data: dict) -> RequestTempl
         org_type=data.get("org_type"),
         department=data.get("department"),
         is_confidential=1 if data.get("is_confidential") else 0,
+        sub_type=data.get("sub_type"),
+        work_mode=data.get("work_mode", "service"),
+        is_recurring=1 if data.get("is_recurring") else 0,
+        recurrence_type=data.get("recurrence_type"),
+        recurrence_day=data.get("recurrence_day"),
+        next_due_date=data.get("next_due_date"),
+        is_active=1,
         created_at=now_beijing(),
     )
     db.add(tmpl)
@@ -62,12 +69,28 @@ def update_template(db: Session, template_id: int, researcher_id: int, data: dic
     if tmpl.researcher_id != researcher_id:
         raise ValueError("无权修改他人模板")
 
+    bool_fields = {"is_confidential", "is_recurring", "is_active"}
     for key, val in data.items():
-        if val is not None and hasattr(tmpl, key):
-            if key == "is_confidential":
-                setattr(tmpl, key, 1 if val else 0)
-            else:
-                setattr(tmpl, key, val)
+        if val is None or not hasattr(tmpl, key):
+            continue
+        if key in bool_fields:
+            setattr(tmpl, key, 1 if val else 0)
+        else:
+            setattr(tmpl, key, val)
+    tmpl.updated_at = now_beijing()
+    db.commit()
+    db.refresh(tmpl)
+    return tmpl
+
+
+def toggle_active(db: Session, template_id: int, researcher_id: int) -> RequestTemplate:
+    """暂停/恢复定期模板（翻转 is_active）"""
+    tmpl = get_template(db, template_id)
+    if not tmpl:
+        raise ValueError("模板不存在")
+    if tmpl.researcher_id != researcher_id:
+        raise ValueError("无权操作他人模板")
+    tmpl.is_active = 0 if tmpl.is_active else 1
     tmpl.updated_at = now_beijing()
     db.commit()
     db.refresh(tmpl)
@@ -86,7 +109,7 @@ def delete_template(db: Session, template_id: int, researcher_id: int):
 
 
 def create_request_from_template(
-    db: Session, template_id: int, sales_id: int, researcher_id: int,
+    db: Session, template_id: int, sales_id: int | None, researcher_id: int,
     description_override: str | None = None,
 ) -> Request:
     """从模板一键创建需求"""
@@ -95,25 +118,28 @@ def create_request_from_template(
         raise ValueError("模板不存在")
 
     title = _render_title(tmpl.title_pattern)
+    work_mode = tmpl.work_mode or "service"
+    is_proactive = work_mode == "proactive"
 
     req = Request(
         title=title,
         description=description_override or tmpl.description,
         request_type=tmpl.request_type,
         research_scope=tmpl.research_scope,
-        org_name=tmpl.org_name or "",
-        org_type=tmpl.org_type,
-        department=tmpl.department,
-        sales_id=sales_id,
+        org_name=None if is_proactive else (tmpl.org_name or ""),
+        org_type=None if is_proactive else tmpl.org_type,
+        department=None if is_proactive else tmpl.department,
+        sales_id=None if is_proactive else sales_id,
         researcher_id=researcher_id,
         is_confidential=tmpl.is_confidential,
-        status="pending",
+        sub_type=tmpl.sub_type,
+        work_mode=work_mode,
+        status="in_progress" if is_proactive else "pending",
         created_by=researcher_id,
         created_at=now_beijing(),
     )
     db.add(req)
 
-    # 递增使用次数
     tmpl.usage_count = (tmpl.usage_count or 0) + 1
     tmpl.updated_at = now_beijing()
 
@@ -133,7 +159,7 @@ def save_request_as_template(
     tmpl = RequestTemplate(
         researcher_id=researcher_id,
         template_name=template_name,
-        title_pattern=req.title,  # 直接用原标题作为 pattern, 用户可后续编辑加占位符
+        title_pattern=req.title,
         description=req.description,
         request_type=req.request_type,
         research_scope=req.research_scope,
@@ -141,6 +167,8 @@ def save_request_as_template(
         org_type=req.org_type,
         department=req.department,
         is_confidential=req.is_confidential,
+        sub_type=req.sub_type,
+        work_mode=req.work_mode or "service",
         created_at=now_beijing(),
     )
     db.add(tmpl)

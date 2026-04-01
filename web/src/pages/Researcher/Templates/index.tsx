@@ -8,22 +8,32 @@ import {
   ProFormSelect,
   ProFormSwitch,
   ProFormDependency,
+  ProFormDigit,
+  ProFormDatePicker,
 } from '@ant-design/pro-components';
 import type { ActionType, ProColumns, ProFormInstance } from '@ant-design/pro-components';
-import { Button, Popconfirm, Tag, Space, Typography, App } from 'antd';
-import { PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Button, Popconfirm, Tag, Space, Typography, App, Tooltip } from 'antd';
+import { PlusOutlined, ThunderboltOutlined, PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useModel } from '@umijs/max';
 import {
   getMyTemplates,
   createTemplate,
   updateTemplate,
   deleteTemplate,
+  toggleTemplateActive,
   createRequestFromTemplate,
 } from '@/services/templates';
 import type { TemplateItem } from '@/services/templates';
 import { getSales, getOrganizations } from '@/services/api';
 import type { Organization } from '@/services/typings';
-import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
+import {
+  REQUEST_TYPE_OPTIONS,
+  SUB_TYPE_OPTIONS,
+  RESEARCH_SCOPE_OPTIONS,
+  WORK_MODE_OPTIONS,
+  WORK_MODE_RULES,
+  ORG_DEPARTMENT_MAP,
+} from '@/utils/constants';
 
 const { Text } = Typography;
 
@@ -33,7 +43,6 @@ const renderTitlePreview = (pattern: string) => {
   const y = today.getFullYear();
   const m = String(today.getMonth() + 1).padStart(2, '0');
   const d = String(today.getDate()).padStart(2, '0');
-  // ISO week number
   const jan1 = new Date(y, 0, 1);
   const days = Math.floor((today.getTime() - jan1.getTime()) / 86400000);
   const week = String(Math.ceil((days + jan1.getDay() + 1) / 7)).padStart(2, '0');
@@ -45,11 +54,44 @@ const renderTitlePreview = (pattern: string) => {
     .replace('{year}', String(y));
 };
 
-/** 特殊机构选项 */
+const RECURRENCE_TYPE_OPTIONS = [
+  { label: '每周', value: 'weekly' },
+  { label: '每两周', value: 'biweekly' },
+  { label: '每月', value: 'monthly' },
+  { label: '每季度', value: 'quarterly' },
+];
+
+const WEEKDAY_OPTIONS = [
+  { label: '周一', value: 1 },
+  { label: '周二', value: 2 },
+  { label: '周三', value: 3 },
+  { label: '周四', value: 4 },
+  { label: '周五', value: 5 },
+  { label: '周六', value: 6 },
+  { label: '周日', value: 7 },
+];
+
 const SPECIAL_ORGS = [
   { name: '内部需求', org_type: '内部' },
   { name: '全体机构', org_type: '内部' },
 ];
+
+/** 定期标签展示 */
+const RecurringLabel: React.FC<{ record: TemplateItem }> = ({ record }) => {
+  if (!record.is_recurring) return <Tag>手动</Tag>;
+  const typeMap: Record<string, string> = {
+    weekly: '每周', biweekly: '每两周', monthly: '每月', quarterly: '每季度',
+  };
+  const typeLabel = typeMap[record.recurrence_type || ''] || record.recurrence_type;
+  const dayLabel = (record.recurrence_type === 'weekly' || record.recurrence_type === 'biweekly')
+    ? WEEKDAY_OPTIONS.find((o) => o.value === record.recurrence_day)?.label
+    : record.recurrence_day ? `${record.recurrence_day}号` : '';
+  return (
+    <Tooltip title={`下次触发: ${record.next_due_date || '-'}`}>
+      <Tag color="blue">{typeLabel}{dayLabel}</Tag>
+    </Tooltip>
+  );
+};
 
 const Templates: React.FC = () => {
   const { message } = App.useApp();
@@ -57,15 +99,12 @@ const Templates: React.FC = () => {
   const actionRef = useRef<ActionType>(null);
   const editFormRef = useRef<ProFormInstance>(null);
 
-  // 编辑/新建 Modal
   const [editVisible, setEditVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TemplateItem | null>(null);
 
-  // 从模板创建需求 Modal
   const [useVisible, setUseVisible] = useState(false);
   const [usingTemplate, setUsingTemplate] = useState<TemplateItem | null>(null);
 
-  // 机构列表（含特殊选项）
   const [orgList, setOrgList] = useState<{ name: string; org_type?: string }[]>([]);
 
   const columns: ProColumns<TemplateItem>[] = [
@@ -94,7 +133,25 @@ const Templates: React.FC = () => {
     { title: '需求类型', dataIndex: 'request_type', valueType: 'select', fieldProps: { options: REQUEST_TYPE_OPTIONS }, width: 120 },
     { title: '研究范围', dataIndex: 'research_scope', search: false, width: 100 },
     { title: '机构', dataIndex: 'org_name', search: false, width: 100, ellipsis: true },
-    { title: '机构类型', dataIndex: 'org_type', search: false, width: 80 },
+    {
+      title: '定期',
+      dataIndex: 'is_recurring',
+      search: false,
+      width: 120,
+      render: (_, record) => <RecurringLabel record={record} />,
+    },
+    {
+      title: '状态',
+      dataIndex: 'is_active',
+      search: false,
+      width: 80,
+      render: (_, record) => {
+        if (!record.is_recurring) return '-';
+        return record.is_active
+          ? <Tag color="green">激活</Tag>
+          : <Tag color="orange">已暂停</Tag>;
+      },
+    },
     {
       title: '保密',
       dataIndex: 'is_confidential',
@@ -112,7 +169,7 @@ const Templates: React.FC = () => {
     {
       title: '操作',
       valueType: 'option',
-      width: 160,
+      width: 200,
       render: (_, record) => [
         <a
           key="use"
@@ -120,6 +177,20 @@ const Templates: React.FC = () => {
         >
           <ThunderboltOutlined /> 使用
         </a>,
+        record.is_recurring ? (
+          <a
+            key="toggle"
+            onClick={async () => {
+              await toggleTemplateActive(record.id);
+              message.success(record.is_active ? '已暂停' : '已恢复');
+              actionRef.current?.reload();
+            }}
+          >
+            {record.is_active
+              ? <><PauseCircleOutlined /> 暂停</>
+              : <><PlayCircleOutlined /> 恢复</>}
+          </a>
+        ) : null,
         <a key="edit" onClick={() => { setEditingRecord(record); setEditVisible(true); }}>
           编辑
         </a>,
@@ -134,11 +205,10 @@ const Templates: React.FC = () => {
         >
           <a style={{ color: '#ff4d4f' }}>删除</a>
         </Popconfirm>,
-      ],
+      ].filter(Boolean),
     },
   ];
 
-  /** 处理机构选择联动 */
   const handleOrgChange = (val: string) => {
     const special = SPECIAL_ORGS.find((o) => o.name === val);
     if (special) {
@@ -149,7 +219,6 @@ const Templates: React.FC = () => {
     }
   };
 
-  /** 新建/编辑模板的公共表单字段 */
   const templateFormFields = (
     <>
       <ProFormText
@@ -171,47 +240,161 @@ const Templates: React.FC = () => {
         label="需求类型"
         options={REQUEST_TYPE_OPTIONS}
         rules={[{ required: true }]}
-      />
-      <ProFormSelect name="research_scope" label="研究范围" options={RESEARCH_SCOPE_OPTIONS} />
-
-      {/* 机构名称：从 API 加载 + 特殊选项（内部需求、全体机构） */}
-      <ProFormSelect
-        name="org_name"
-        label="机构名称"
         fieldProps={{
-          showSearch: true,
-          onChange: handleOrgChange,
+          onChange: (val: string) => {
+            editFormRef.current?.setFieldsValue({ sub_type: undefined });
+            const rule = WORK_MODE_RULES[val];
+            if (rule?.mode === 'locked') {
+              editFormRef.current?.setFieldsValue({ work_mode: rule.value });
+            } else {
+              editFormRef.current?.setFieldsValue({ work_mode: rule?.default || 'service' });
+            }
+          },
         }}
-        request={async () => {
-          const orgs = await getOrganizations();
-          setOrgList(orgs);
-          const specialOptions = SPECIAL_ORGS.map((o) => ({ label: o.name, value: o.name }));
-          const orgOptions = orgs.map((o) => ({ label: o.name, value: o.name }));
-          return [...specialOptions, ...orgOptions];
-        }}
-      />
-      {/* 机构类型：自动填入，不可编辑 */}
-      <ProFormText
-        name="org_type"
-        label="机构类型"
-        readonly
-        fieldProps={{ placeholder: '选择机构后自动填入' }}
       />
 
-      <ProFormDependency name={['org_type']}>
-        {({ org_type }) => {
-          const depts = org_type ? ORG_DEPARTMENT_MAP[org_type] : [];
-          if (!depts?.length) return null;
+      {/* 二级分类（联动） */}
+      <ProFormDependency name={['request_type']}>
+        {({ request_type }) => {
+          const subOpts = SUB_TYPE_OPTIONS[request_type];
+          if (!subOpts) return null;
           return (
             <ProFormSelect
-              name="department"
-              label="对接部门"
-              options={depts.map((d: string) => ({ label: d, value: d }))}
+              name="sub_type"
+              label="二级分类"
+              options={subOpts}
+              placeholder="请选择二级分类"
             />
           );
         }}
       </ProFormDependency>
+
+      {/* 工作模式（联动） */}
+      <ProFormDependency name={['request_type']}>
+        {({ request_type }) => {
+          const rule = WORK_MODE_RULES[request_type];
+          if (!rule) return null;
+          if (rule.mode === 'locked') {
+            return (
+              <ProFormSelect
+                name="work_mode"
+                label="工作模式"
+                options={WORK_MODE_OPTIONS}
+                readonly
+              />
+            );
+          }
+          return (
+            <ProFormSelect
+              name="work_mode"
+              label="工作模式"
+              options={WORK_MODE_OPTIONS}
+            />
+          );
+        }}
+      </ProFormDependency>
+
+      <ProFormSelect name="research_scope" label="研究范围" options={RESEARCH_SCOPE_OPTIONS} />
+
+      {/* 机构字段（proactive 时隐藏） */}
+      <ProFormDependency name={['work_mode']}>
+        {({ work_mode }) => {
+          if (work_mode === 'proactive') return null;
+          return (
+            <>
+              <ProFormSelect
+                name="org_name"
+                label="机构名称"
+                fieldProps={{
+                  showSearch: true,
+                  onChange: handleOrgChange,
+                }}
+                request={async () => {
+                  const orgs = await getOrganizations();
+                  setOrgList(orgs);
+                  const specialOptions = SPECIAL_ORGS.map((o) => ({ label: o.name, value: o.name }));
+                  const orgOptions = orgs.map((o: Organization) => ({ label: o.name, value: o.name }));
+                  return [...specialOptions, ...orgOptions];
+                }}
+              />
+              <ProFormText
+                name="org_type"
+                label="机构类型"
+                readonly
+                fieldProps={{ placeholder: '选择机构后自动填入' }}
+              />
+              <ProFormDependency name={['org_type']}>
+                {({ org_type }) => {
+                  const depts = org_type ? ORG_DEPARTMENT_MAP[org_type] : [];
+                  if (!depts?.length) return null;
+                  return (
+                    <ProFormSelect
+                      name="department"
+                      label="对接部门"
+                      options={depts.map((d: string) => ({ label: d, value: d }))}
+                    />
+                  );
+                }}
+              </ProFormDependency>
+            </>
+          );
+        }}
+      </ProFormDependency>
+
       <ProFormSwitch name="is_confidential" label="保密" />
+
+      {/* ── 定期调度 ── */}
+      <ProFormSwitch
+        name="is_recurring"
+        label="启用定期调度"
+        tooltip="启用后系统将按周期自动创建需求（每日08:00检查）"
+      />
+      <ProFormDependency name={['is_recurring']}>
+        {({ is_recurring }) => {
+          if (!is_recurring) return null;
+          return (
+            <>
+              <ProFormSelect
+                name="recurrence_type"
+                label="周期类型"
+                options={RECURRENCE_TYPE_OPTIONS}
+                rules={[{ required: true, message: '请选择周期类型' }]}
+              />
+              <ProFormDependency name={['recurrence_type']}>
+                {({ recurrence_type }) => {
+                  if (!recurrence_type) return null;
+                  if (recurrence_type === 'weekly' || recurrence_type === 'biweekly') {
+                    return (
+                      <ProFormSelect
+                        name="recurrence_day"
+                        label="触发日（周几）"
+                        options={WEEKDAY_OPTIONS}
+                        rules={[{ required: true, message: '请选择触发日' }]}
+                      />
+                    );
+                  }
+                  return (
+                    <ProFormDigit
+                      name="recurrence_day"
+                      label="触发日（几号）"
+                      min={1}
+                      max={28}
+                      rules={[{ required: true, message: '请输入触发日' }]}
+                      fieldProps={{ precision: 0 }}
+                    />
+                  );
+                }}
+              </ProFormDependency>
+              <ProFormDatePicker
+                name="next_due_date"
+                label="首次触发日期"
+                rules={[{ required: true, message: '请选择首次触发日期' }]}
+                tooltip="系统将在该日期 08:00 自动创建第一条需求"
+              />
+            </>
+          );
+        }}
+      </ProFormDependency>
     </>
   );
 
@@ -248,16 +431,25 @@ const Templates: React.FC = () => {
         onOpenChange={(v) => { if (!v) { setEditVisible(false); setEditingRecord(null); } }}
         initialValues={
           editingRecord
-            ? { ...editingRecord, is_confidential: !!editingRecord.is_confidential }
-            : { is_confidential: false }
+            ? {
+                ...editingRecord,
+                is_confidential: !!editingRecord.is_confidential,
+                is_recurring: !!editingRecord.is_recurring,
+              }
+            : { is_confidential: false, is_recurring: false, work_mode: 'service' }
         }
         modalProps={{ destroyOnClose: true }}
         onFinish={async (values) => {
+          const data = {
+            ...values,
+            is_confidential: values.is_confidential ? 1 : 0,
+            is_recurring: values.is_recurring ? 1 : 0,
+          };
           if (editingRecord) {
-            await updateTemplate(editingRecord.id, values);
+            await updateTemplate(editingRecord.id, data);
             message.success('模板已更新');
           } else {
-            await createTemplate(values);
+            await createTemplate(data);
             message.success('模板已创建');
           }
           actionRef.current?.reload();
@@ -294,16 +486,24 @@ const Templates: React.FC = () => {
             <Text strong>{renderTitlePreview(usingTemplate.title_pattern)}</Text>
           </div>
         )}
-        <ProFormSelect
-          name="sales_id"
-          label="选择销售"
-          rules={[{ required: true, message: '请选择关联的销售' }]}
-          request={async () => {
-            const data = await getSales();
-            return data.map((u) => ({ label: u.display_name, value: u.id }));
-          }}
-          fieldProps={{ showSearch: true }}
-        />
+        {/* proactive 模式：不需要选销售 */}
+        {usingTemplate?.work_mode !== 'proactive' && (
+          <ProFormSelect
+            name="sales_id"
+            label="选择销售"
+            rules={[{ required: true, message: '请选择关联的销售' }]}
+            request={async () => {
+              const data = await getSales();
+              return data.map((u) => ({ label: u.display_name, value: u.id }));
+            }}
+            fieldProps={{ showSearch: true }}
+          />
+        )}
+        {usingTemplate?.work_mode === 'proactive' && (
+          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#e6f4ff', borderRadius: 6 }}>
+            <Text type="secondary">主动模式：需求将直接进入"处理中"状态，无需关联销售。</Text>
+          </div>
+        )}
         <ProFormTextArea
           name="description"
           label="补充说明（可选，覆盖模板默认描述）"

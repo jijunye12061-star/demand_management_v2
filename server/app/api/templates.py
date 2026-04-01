@@ -8,7 +8,7 @@ from app.schemas.template import (
 )
 from app.services.template_service import (
     list_templates, get_template, create_template,
-    update_template, delete_template,
+    update_template, delete_template, toggle_active,
     create_request_from_template, save_request_as_template,
 )
 
@@ -58,6 +58,16 @@ def delete(template_id: int, db: DB, user: CurrentUser):
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
     return {"message": "ok"}
+
+
+@router.post("/{template_id}/toggle-active", response_model=TemplateResponse)
+def toggle_active_endpoint(template_id: int, db: DB, user: CurrentUser):
+    """暂停/恢复定期模板"""
+    _check_researcher(user)
+    try:
+        return toggle_active(db, template_id, user.id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
 
 
 @router.post("/{template_id}/create-request")

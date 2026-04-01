@@ -42,14 +42,13 @@ def list_requests(
     status_filter: str | None = Query(None, alias="status"),
     sub_type: str | None = None,
     work_mode: str | None = None,
-    visibility: str | None = None,
 ):
     params = RequestListParams(
         status=status_filter, request_type=request_type, research_scope=research_scope,
         org_type=org_type, researcher_id=researcher_id, sales_id=sales_id,
         keyword=keyword, date_from=date_from, date_to=date_to,
         scope=scope, page=page, page_size=page_size,
-        sub_type=sub_type, work_mode=work_mode, visibility=visibility,
+        sub_type=sub_type, work_mode=work_mode,
     )
     items, total = query_requests(db, user, params)
     return {"items": items, "total": total}
@@ -71,7 +70,6 @@ def feed_stats(
     q = db.query(Request).filter(
         Request.status == "completed",
         Request.is_confidential == 0,
-        Request.visibility == "public",
     )
     if request_type:
         q = q.filter(Request.request_type == request_type)
@@ -244,10 +242,6 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         researcher_id = body.researcher_id
         initial_status = "pending"
 
-    # visibility 规则：默认值逻辑，内部项目默认 internal，用户可覆盖
-    default_visibility = "internal" if body.request_type == "内部项目" else "public"
-    visibility = body.visibility if body.visibility in ("public", "internal") else default_visibility
-
     # 校验 parent_request_id（revision 关联校验）
     # link_type 未传时默认 'sub'（手动关联衍生需求场景的兜底）
     final_link_type = body.link_type
@@ -267,7 +261,6 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         is_confidential=1 if body.is_confidential else 0,
         sub_type=body.sub_type,
         work_mode=work_mode,
-        visibility=visibility,
         sales_id=sales_id,
         created_by=user.id,
         created_at=body.created_at or now_beijing(),

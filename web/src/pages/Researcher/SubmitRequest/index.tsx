@@ -14,7 +14,7 @@ import { Alert, App, Form, Card } from 'antd';
 import { useModel, useNavigate } from '@umijs/max';
 import { getOrganizations, getResearchers, getSales, createRequest, searchLinkableRequests } from '@/services/api';
 import type { Organization, SalesUser } from '@/services/typings';
-import { REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, WORK_MODE_RULES, WORK_MODE_OPTIONS, VISIBILITY_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
+import { REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, WORK_MODE_RULES, WORK_MODE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
 
 const SubmitRequest: React.FC = () => {
@@ -122,7 +122,6 @@ const SubmitRequest: React.FC = () => {
             is_confidential: false,
             created_at: dayjs(),
             researcher_id: currentUser?.id,
-            visibility: 'public',
           }}
           layout="vertical"
           grid
@@ -166,8 +165,8 @@ const SubmitRequest: React.FC = () => {
               onChange: (val: string) => {
                 form.setFieldValue('sub_type', undefined);
                 form.setFieldValue('work_mode', WORK_MODE_RULES[val]?.default || WORK_MODE_RULES[val]?.value || 'service');
-                // 内部项目默认 internal，其余默认 public
-                form.setFieldValue('visibility', val === '内部项目' ? 'internal' : 'public');
+                // 内部项目默认保密
+                form.setFieldValue('is_confidential', val === '内部项目');
                 // 清空机构相关字段
                 form.setFieldsValue({ sales_id: undefined, org_name: undefined, org_type: undefined, department: undefined });
                 setSelectedTeamId(null);
@@ -200,14 +199,6 @@ const SubmitRequest: React.FC = () => {
             colProps={{ span: 12 }}
             options={RESEARCH_SCOPE_OPTIONS}
             placeholder="请选择研究范围"
-          />
-
-          {/* 可见性 */}
-          <ProFormSelect
-            name="visibility"
-            label="可见性"
-            colProps={{ span: 12 }}
-            options={VISIBILITY_OPTIONS}
           />
 
           {/* 需求类型联动区 */}

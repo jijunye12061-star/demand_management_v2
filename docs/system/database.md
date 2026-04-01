@@ -68,7 +68,6 @@ CREATE TABLE requests
     completed_at       TIMESTAMP,
     withdraw_reason    TEXT,                    -- 研究员退回时必填，重新提交后清空
     work_mode          TEXT      DEFAULT 'service',   -- service=销售服务需求, proactive=研究员主动发起
-    visibility         TEXT      DEFAULT 'public',    -- public=显示在 Feed, internal=仅内部可见
     automation_hours   REAL      DEFAULT NULL,  -- 自动化工时（CA功能）
     parent_request_id  INTEGER   DEFAULT NULL REFERENCES requests (id),  -- 关联原始需求（衍生/修改来源）
     link_type          TEXT      DEFAULT NULL   -- 关联类型: 'revision'=修改迭代, 'sub'=衍生需求
@@ -135,15 +134,35 @@ CREATE INDEX idx_collab_user ON request_collaborators (user_id);
 ```sql
 CREATE TABLE request_templates
 (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- (其余列由初始建表定义)
-    usage_count  INTEGER   DEFAULT 0,
-    updated_at   TIMESTAMP,
-    is_deleted   INTEGER   DEFAULT 0
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    researcher_id     INTEGER NOT NULL REFERENCES users(id),
+    template_name     TEXT    NOT NULL,
+    title_pattern     TEXT    NOT NULL,             -- 支持占位符: {date}/{week}/{month}/{year}
+    description       TEXT,
+    request_type      TEXT    NOT NULL,
+    research_scope    TEXT,
+    org_name          TEXT,
+    org_type          TEXT,
+    department        TEXT,
+    is_confidential   INTEGER   DEFAULT 0,
+    usage_count       INTEGER   DEFAULT 0,
+    created_at        TEXT,
+    updated_at        TEXT,
+    is_deleted        INTEGER   DEFAULT 0,
+    -- 分类字段（与 requests 表对齐）
+    sub_type          TEXT,
+    work_mode         TEXT      DEFAULT 'service',
+    -- 定期调度字段（由迁移脚本 migrate_v2_recurring_and_fixes.py 新增）
+    is_recurring      INTEGER   DEFAULT 0,          -- 0=手动, 1=定期自动触发
+    recurrence_type   TEXT,                         -- weekly/biweekly/monthly/quarterly
+    recurrence_day    INTEGER,                       -- 周几(1-7) 或 每月几号(1-28)
+    next_due_date     TEXT,                         -- YYYY-MM-DD, 系统维护
+    last_triggered_at TEXT,                         -- 上次自动触发时间
+    is_active         INTEGER   DEFAULT 1           -- 0=已暂停, 1=激活
 );
 ```
 
-**注**: 软删除，`is_deleted=1` 时前端不展示。
+**注**: 软删除，`is_deleted=1` 时前端不展示。定期模板每日 08:00 由 `recurring_service.process_recurring_templates()` 检查并自动创建需求。
 
 ### 2.8 request_updates
 
@@ -188,8 +207,8 @@ CREATE INDEX idx_dl_user ON download_logs (user_id);
 - `users.password_version`: 1=SHA256(旧), 2=bcrypt(新)。登录时若为1，验证通过后自动升级为2。
 - `requests.withdraw_reason`: 研究员退回时必填，重新提交后清空。
 - `requests.sub_type`: 二级分类，可空；对应一级 `request_type` 有固定选项集（见业务规则 §2）。
-- `requests.work_mode`: 工作模式，`service`=销售服务需求（默认），`proactive`=研究员主动发起；专项报告类型由用户选择，其余类型固定为 `service`。
-- `requests.visibility`: 可见性，`public`=显示在 Feed（默认），`internal`=仅内部可见不出现在 Feed；内部项目默认 `internal`，其余类型默认 `public`。
+- `requests.work_mode`: 工作模式，`service`=销售服务需求（默认），`proactive`=研究员主动发起；专项报告/定期报告由用户选择，其余类型固定。
+- `requests.visibility`: 历史字段，已停止使用（保留列以免数据丢失）。Feed 过滤现改用 `is_confidential == 0`。
 - `requests.org_name`: 客户机构名，内部项目或研究员主动发起时可为空（nullable）。
 - `requests.sales_id`: 关联销售用户 ID，内部项目或研究员主动发起时可为空（nullable）。
 - `requests.automation_hours`: 自动化辅助完成的工时，与 `work_hours`（人工工时）分开记录。
@@ -224,18 +243,17 @@ CREATE INDEX IF NOT EXISTS idx_dl_time ON download_logs(downloaded_at);
 # 历史变更: 原7种 → 合并/重命名为5种（报告定制+量化策略开发+工具/系统开发+其他 → 专项报告/内部项目）
 REQUEST_TYPES = ["专项报告", "调研", "基金筛选", "定期报告", "内部项目"]
 
-# 二级分类 (sub_type), 按一级类型分组
+# 二级分类 (sub_type), 按一级类型分组；基金筛选无二级分类
 SUB_TYPES = {
-    "专项报告": ["量化策略", "固收研究", "权益研究", "资产配置", "其他"],
-    "调研": ["实地调研", "电话调研", "其他"],
-    "基金筛选": [],   # 无二级分类
-    "定期报告": ["周报", "月报", "季报", "年报", "其他"],
-    "内部项目": ["系统/工具开发", "流程优化", "其他"],
+    "专项报告": ["定制报告", "深度报告"],
+    "调研": ["线上独家调研", "线下专访调研"],
+    "定期报告": ["周报", "月报", "季报", "其他周期"],
+    "内部项目": ["课题研究", "系统建设", "培训赋能", "数据库建设", "其他"],
 }
 
 # 研究范畴 (当前值)
-# 历史改名: 其他→综合/行业; 新增: 不涉及 (工具/系统开发类使用)
-RESEARCH_SCOPES = ["纯债", "固收+", "权益", "量化", "资产配置", "综合/行业", "不涉及"]
+# 历史改名: 量化→量化及指增
+RESEARCH_SCOPES = ["纯债", "固收+", "权益", "量化及指增", "资产配置", "综合/行业", "不涉及"]
 
 # 客户类型
 ORG_TYPES = ["银行", "券商", "保险", "理财", "FOF", "信托", "私募", "期货", "其他"]

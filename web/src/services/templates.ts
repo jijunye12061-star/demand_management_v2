@@ -15,6 +15,14 @@ export interface TemplateItem {
   usage_count: number;
   created_at?: string;
   updated_at?: string;
+  sub_type?: string;
+  work_mode?: 'service' | 'proactive';
+  is_recurring: number;
+  recurrence_type?: 'weekly' | 'biweekly' | 'monthly' | 'quarterly';
+  recurrence_day?: number;
+  next_due_date?: string;
+  last_triggered_at?: string;
+  is_active: number;
 }
 
 export async function getMyTemplates() {
@@ -33,9 +41,13 @@ export async function deleteTemplate(id: number) {
   return request(`/api/v1/templates/${id}`, { method: 'DELETE' });
 }
 
+export async function toggleTemplateActive(id: number) {
+  return request<TemplateItem>(`/api/v1/templates/${id}/toggle-active`, { method: 'POST' });
+}
+
 export async function createRequestFromTemplate(
   templateId: number,
-  data: { sales_id: number; description?: string },
+  data: { sales_id?: number; description?: string },
 ) {
   return request<{ request_id: number; title: string }>(
     `/api/v1/templates/${templateId}/create-request`,

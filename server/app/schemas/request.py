@@ -13,7 +13,6 @@ class RequestCreate(BaseModel):
     is_confidential: bool = False
     sub_type: str | None = None
     work_mode: str = "service"
-    visibility: str = "public"
     created_at: str | None = None
     sales_id: int | None = None  # 研究员代提时必填
     parent_request_id: int | None = None
@@ -37,7 +36,6 @@ class RequestUpdate(BaseModel):
     parent_request_id: int | None = None
     sub_type: str | None = None
     work_mode: str | None = None
-    visibility: str | None = None
 
 
 class RequestResponse(BaseModel):
@@ -59,7 +57,6 @@ class RequestResponse(BaseModel):
     withdraw_reason: str | None = None
     sub_type: str | None = None
     work_mode: str = "service"
-    visibility: str = "public"
     created_by: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
@@ -94,7 +91,6 @@ class RequestListParams(BaseModel):
     page_size: int = 20
     sub_type: str | None = None
     work_mode: str | None = None
-    visibility: str | None = None
 
 
 class WithdrawRequest(BaseModel):

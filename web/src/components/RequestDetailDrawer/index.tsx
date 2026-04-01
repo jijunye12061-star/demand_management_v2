@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Drawer, Tag, Typography, Alert, Table, Button, Space } from 'antd';
 import { ProDescriptions } from '@ant-design/pro-components';
 import type { RequestItem } from '@/services/typings';
-import { STATUS_ENUM, WORK_MODE_OPTIONS, VISIBILITY_OPTIONS } from '@/utils/constants';
+import { STATUS_ENUM, WORK_MODE_OPTIONS } from '@/utils/constants';
 import { getRequestDetail } from '@/services/api';
 import FileDownloadButton from '../FileDownloadButton';
 import ProgressTimeline from '../ProgressTimeline';
@@ -151,9 +151,6 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
           {WORK_MODE_OPTIONS.find((o) => o.value === displayRequest.work_mode)?.label || displayRequest.work_mode || '-'}
         </ProDescriptions.Item>
         <ProDescriptions.Item dataIndex="research_scope" label="研究范围" />
-        <ProDescriptions.Item label="可见性">
-          {VISIBILITY_OPTIONS.find((o) => o.value === displayRequest.visibility)?.label || displayRequest.visibility || '-'}
-        </ProDescriptions.Item>
 
         {/* feed 模式隐藏以下敏感字段 */}
         {!isFeed && (

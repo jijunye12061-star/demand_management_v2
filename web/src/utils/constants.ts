@@ -24,8 +24,8 @@ export const SUB_TYPE_OPTIONS: Record<string, { label: string; value: string }[]
     { label: '深度报告', value: '深度报告' },
   ],
   调研: [
-    { label: '线上调研', value: '线上调研' },
-    { label: '线下调研', value: '线下调研' },
+    { label: '线上独家调研', value: '线上独家调研' },
+    { label: '线下专访调研', value: '线下专访调研' },
   ],
   定期报告: [
     { label: '周报', value: '周报' },
@@ -54,18 +54,12 @@ export const WORK_MODE_OPTIONS = [
   { label: '主动模式', value: 'proactive' },
 ];
 
-// 可见性选项
-export const VISIBILITY_OPTIONS = [
-  { label: '公开', value: 'public' },
-  { label: '内部', value: 'internal' },
-];
-
 // 工作模式规则（与后端保持一致）
 export const WORK_MODE_RULES: Record<string, { mode: 'locked' | 'user_select'; value?: string; default?: string }> = {
   专项报告: { mode: 'user_select', default: 'service' },
   调研: { mode: 'locked', value: 'proactive' },
   基金筛选: { mode: 'locked', value: 'service' },
-  定期报告: { mode: 'locked', value: 'proactive' },
+  定期报告: { mode: 'user_select', default: 'proactive' },
   内部项目: { mode: 'locked', value: 'proactive' },
 };
 
@@ -74,7 +68,7 @@ export const RESEARCH_SCOPE_OPTIONS = [
   { label: '纯债', value: '纯债' },
   { label: '固收+', value: '固收+' },
   { label: '权益', value: '权益' },
-  { label: '量化', value: '量化' },
+  { label: '量化及指增', value: '量化及指增' },
   { label: '资产配置', value: '资产配置' },
   { label: '综合/行业', value: '综合/行业' },
   { label: '不涉及', value: '不涉及' },

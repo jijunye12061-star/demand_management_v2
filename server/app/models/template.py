@@ -22,3 +22,13 @@ class RequestTemplate(Base):
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)
     is_deleted: Mapped[int] = mapped_column(Integer, default=0)
+    # 分类字段（与 requests 表对齐）
+    sub_type: Mapped[str | None] = mapped_column(String)
+    work_mode: Mapped[str] = mapped_column(String, default="service")
+    # 定期调度字段
+    is_recurring: Mapped[int] = mapped_column(Integer, default=0)
+    recurrence_type: Mapped[str | None] = mapped_column(String)   # weekly/biweekly/monthly/quarterly
+    recurrence_day: Mapped[int | None] = mapped_column(Integer)   # 1-7 或 1-28
+    next_due_date: Mapped[str | None] = mapped_column(String)     # YYYY-MM-DD
+    last_triggered_at: Mapped[str | None] = mapped_column(String)
+    is_active: Mapped[int] = mapped_column(Integer, default=1)

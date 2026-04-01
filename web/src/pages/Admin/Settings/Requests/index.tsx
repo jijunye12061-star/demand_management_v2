@@ -9,7 +9,7 @@ import { MinusCircleOutlined } from '@ant-design/icons';
 import { getRequests, updateRequest, getResearchers, getSales, getOrganizations, getRequestDetail, searchLinkableRequests } from '@/services/api';
 import { deleteRequest, toggleConfidential, updateRequestCollaborators } from '@/services/admin';
 import type { RequestItem, Organization } from '@/services/typings';
-import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, WORK_MODE_OPTIONS, VISIBILITY_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
+import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, WORK_MODE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 
 const Requests: React.FC = () => {
   const { message } = App.useApp();
@@ -248,7 +248,6 @@ const Requests: React.FC = () => {
         />
         <ProFormSwitch name="is_confidential" label="保密" />
         <ProFormSelect name="work_mode" label="工作模式" options={WORK_MODE_OPTIONS} />
-        <ProFormSelect name="visibility" label="可见性" options={VISIBILITY_OPTIONS} />
         <ProFormText name="work_hours" label="交付工时(h)" />
         <ProFormText name="automation_hours" label="自动化建设工时(h)" />
         <ProFormSelect

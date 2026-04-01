@@ -13,6 +13,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
+from app.services.recurring_service import process_recurring_templates
 
 logger = logging.getLogger("backup")
 
@@ -77,6 +78,12 @@ scheduler.add_job(
     backup_job,
     trigger=CronTrigger(hour=3, minute=0),
     id="daily_backup",
+    replace_existing=True,
+)
+scheduler.add_job(
+    process_recurring_templates,
+    trigger=CronTrigger(hour=8, minute=0),
+    id="daily_recurring",
     replace_existing=True,
 )
 
