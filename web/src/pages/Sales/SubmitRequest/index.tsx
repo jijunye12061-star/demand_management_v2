@@ -13,7 +13,7 @@ import { Form, Card, App, Alert } from 'antd';
 import { useNavigate, useLocation } from '@umijs/max';
 import { getOrganizations, getResearchers, createRequest, searchLinkableRequests, getRequestDetail } from '@/services/api';
 import type { Organization, RequestItem } from '@/services/typings';
-import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
+import { SALES_REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
 
 const SubmitRequest: React.FC = () => {
@@ -40,6 +40,7 @@ const SubmitRequest: React.FC = () => {
         parent_request_id: data.id,
         title: `${data.title} - 修改${revisionN}`,
         request_type: data.request_type,
+        sub_type: data.sub_type,
         research_scope: data.research_scope,
         org_name: data.org_name,
         org_type: data.org_type,
@@ -140,21 +141,36 @@ const SubmitRequest: React.FC = () => {
             fieldProps={{ style: { width: '100%' } }}
           />
 
-          {/* 第二行：需求类型 + 研究范围 */}
+          {/* 第二行：需求类型 + 二级分类 */}
           <ProFormSelect
             name="request_type"
             label="需求类型"
-            options={REQUEST_TYPE_OPTIONS}
+            options={SALES_REQUEST_TYPE_OPTIONS}
             rules={[{ required: true, message: '请选择需求类型' }]}
             colProps={{ span: 12 }}
             fieldProps={{
-              onChange: (val: string) => {
-                if (val === '工具/系统开发') {
-                  form.setFieldsValue({ research_scope: '不涉及' });
-                }
+              onChange: () => {
+                form.setFieldValue('sub_type', undefined);
               },
             }}
           />
+          <ProFormDependency name={['request_type']}>
+            {({ request_type }) => {
+              const subOpts = SUB_TYPE_OPTIONS[request_type];
+              if (!subOpts) return <div style={{ display: 'none' }} />;
+              return (
+                <ProFormSelect
+                  name="sub_type"
+                  label="二级分类"
+                  options={subOpts}
+                  colProps={{ span: 12 }}
+                  placeholder="请选择二级分类（选填）"
+                />
+              );
+            }}
+          </ProFormDependency>
+
+          {/* 研究范围 */}
           <ProFormSelect
             name="research_scope"
             label="研究范围"

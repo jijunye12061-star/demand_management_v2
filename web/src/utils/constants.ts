@@ -8,16 +8,66 @@ export const STATUS_ENUM: Record<string, { text: string; status: string }> = {
   deleted: { text: '已删除', status: 'Default' },  // ← 新增
 };
 
-// 需求类型选项
+// 需求类型选项（一级分类，5种）
 export const REQUEST_TYPE_OPTIONS = [
-  { label: '基金筛选', value: '基金筛选' },
-  { label: '报告定制', value: '报告定制' },
-  { label: '定期报告', value: '定期报告' },
+  { label: '专项报告', value: '专项报告' },
   { label: '调研', value: '调研' },
-  { label: '量化策略开发', value: '量化策略开发' },
-  { label: '工具/系统开发', value: '工具/系统开发' },
-  { label: '其他', value: '其他' },
+  { label: '基金筛选', value: '基金筛选' },
+  { label: '定期报告', value: '定期报告' },
+  { label: '内部项目', value: '内部项目' },
 ];
+
+// 二级分类选项（按一级分类索引，无二级分类的类型不含 key）
+export const SUB_TYPE_OPTIONS: Record<string, { label: string; value: string }[]> = {
+  专项报告: [
+    { label: '定制报告', value: '定制报告' },
+    { label: '深度报告', value: '深度报告' },
+  ],
+  调研: [
+    { label: '线上调研', value: '线上调研' },
+    { label: '线下调研', value: '线下调研' },
+  ],
+  定期报告: [
+    { label: '周报', value: '周报' },
+    { label: '月报', value: '月报' },
+    { label: '季报', value: '季报' },
+    { label: '其他周期', value: '其他周期' },
+  ],
+  内部项目: [
+    { label: '课题研究', value: '课题研究' },
+    { label: '系统建设', value: '系统建设' },
+    { label: '培训赋能', value: '培训赋能' },
+    { label: '数据库建设', value: '数据库建设' },
+    { label: '其他', value: '其他' },
+  ],
+};
+
+// 销售可选的需求类型（仅专项报告/基金筛选）
+export const SALES_REQUEST_TYPE_OPTIONS = [
+  { label: '专项报告', value: '专项报告' },
+  { label: '基金筛选', value: '基金筛选' },
+];
+
+// 工作模式选项
+export const WORK_MODE_OPTIONS = [
+  { label: '服务模式', value: 'service' },
+  { label: '主动模式', value: 'proactive' },
+];
+
+// 可见性选项
+export const VISIBILITY_OPTIONS = [
+  { label: '公开', value: 'public' },
+  { label: '内部', value: 'internal' },
+];
+
+// 工作模式规则（与后端保持一致）
+export const WORK_MODE_RULES: Record<string, { mode: 'locked' | 'user_select'; value?: string; default?: string }> = {
+  专项报告: { mode: 'user_select', default: 'service' },
+  调研: { mode: 'locked', value: 'proactive' },
+  基金筛选: { mode: 'locked', value: 'service' },
+  定期报告: { mode: 'locked', value: 'proactive' },
+  内部项目: { mode: 'locked', value: 'proactive' },
+};
 
 // 研究范围选项
 export const RESEARCH_SCOPE_OPTIONS = [

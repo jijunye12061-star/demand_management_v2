@@ -12,10 +12,10 @@ class Request(Base):
     description: Mapped[str | None] = mapped_column(Text)
     request_type: Mapped[str] = mapped_column(Text, nullable=False)
     research_scope: Mapped[str | None] = mapped_column(Text)
-    org_name: Mapped[str] = mapped_column(Text, nullable=False)
+    org_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     org_type: Mapped[str | None] = mapped_column(Text)
     department: Mapped[str | None] = mapped_column(Text)
-    sales_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    sales_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     researcher_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     is_confidential: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(Text, default="pending")
@@ -23,7 +23,9 @@ class Request(Base):
     attachment_path: Mapped[str | None] = mapped_column(Text)
     work_hours: Mapped[float] = mapped_column(Float, default=0)
     withdraw_reason: Mapped[str | None] = mapped_column(Text)  # 研究员退回原因
-    is_self_initiated: Mapped[int] = mapped_column(Integer, default=0)  # 研究员自发需求标记
+    sub_type: Mapped[str | None] = mapped_column(Text)
+    work_mode: Mapped[str] = mapped_column(Text, default="service")
+    visibility: Mapped[str] = mapped_column(Text, default="public")
     automation_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     parent_request_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("requests.id"), nullable=True)
     link_type: Mapped[str | None] = mapped_column(Text)  # 'revision' | None

@@ -33,7 +33,7 @@ export interface RequestItem {
   description?: string;
   request_type: string;
   research_scope?: string;
-  org_name: string;
+  org_name?: string;
   org_type?: string;
   department?: string;
   sales_id?: number;
@@ -51,7 +51,9 @@ export interface RequestItem {
   researcher_name?: string;
   download_count?: number;
   withdraw_reason?: string;
-  is_self_initiated?: boolean;
+  sub_type?: string;
+  work_mode?: 'service' | 'proactive';
+  visibility?: 'public' | 'internal';
   collaborators?: CollaboratorDetail[];
   automation_hours?: number;
   parent_request_id?: number;

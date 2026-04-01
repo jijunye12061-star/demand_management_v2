@@ -7,7 +7,7 @@ import {
   getOrganizations, getResearchers,
 } from '@/services/api';
 import type { RequestItem, Organization } from '@/services/typings';
-import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
+import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
 import StatsCards from '@/components/StatsCards';
@@ -52,6 +52,7 @@ const MyRequests: React.FC = () => {
       title: record.title,
       description: record.description,
       request_type: record.request_type,
+      sub_type: record.sub_type,
       research_scope: record.research_scope,
       org_name: record.org_name,
       org_type: record.org_type,
@@ -261,7 +262,27 @@ const MyRequests: React.FC = () => {
         <ProForm form={editForm} submitter={false} layout="vertical">
           <ProFormText name="title" label="需求标题" rules={[{ required: true }]} />
           <ProFormTextArea name="description" label="需求描述" />
-          <ProFormSelect name="request_type" label="需求类型" options={REQUEST_TYPE_OPTIONS} rules={[{ required: true }]} />
+          <ProFormSelect
+            name="request_type"
+            label="需求类型"
+            options={REQUEST_TYPE_OPTIONS}
+            rules={[{ required: true }]}
+            fieldProps={{ onChange: () => editForm.setFieldValue('sub_type', undefined) }}
+          />
+          <ProFormDependency name={['request_type']}>
+            {({ request_type }) => {
+              const subOpts = SUB_TYPE_OPTIONS[request_type];
+              if (!subOpts) return null;
+              return (
+                <ProFormSelect
+                  name="sub_type"
+                  label="二级分类"
+                  options={subOpts}
+                  placeholder="请选择二级分类（选填）"
+                />
+              );
+            }}
+          </ProFormDependency>
           <ProFormSelect name="research_scope" label="研究范围" options={RESEARCH_SCOPE_OPTIONS} />
           <ProFormSelect
             name="org_name"

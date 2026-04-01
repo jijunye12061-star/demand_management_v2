@@ -65,9 +65,9 @@ admin 同时具备研究员和销售身份:
 
 ### 2.2 "需求动态" 模式 (scope=feed)
 
-**基础条件**: `status = 'completed'` AND `is_confidential = 0` AND `request_type != '工具/系统开发'`
+**基础条件**: `status = 'completed'` AND `is_confidential = 0` AND `visibility = 'public'`
 
-> `工具/系统开发` 属内部基建，不面向客户展示，硬编码排除。
+> `visibility = 'internal'` 的需求（如内部项目）属内部基建，不面向客户展示，由 `visibility` 字段控制而非硬编码类型排除。
 
 所有角色看到的内容一致 — 已完成的公开需求。
 
@@ -292,3 +292,51 @@ org_type 变化时:
 
 - `is_deleted = 1` 标记删除，不物理删除
 - 列表查询过滤 `is_deleted = 0`
+
+---
+
+## 11. 分类体系规则 (classification)
+
+### 11.1 一级类型 (request_type)
+
+当前共 5 种类型（原 7 种合并/重命名）：
+
+| 类型 | 说明 |
+|---|---|
+| 专项报告 | 面向客户的定制化研究报告（原报告定制、量化策略开发等） |
+| 调研 | 实地/电话调研 |
+| 基金筛选 | 基金产品筛选分析 |
+| 定期报告 | 周期性输出报告（周报/月报/季报/年报） |
+| 内部项目 | 内部基建、系统/工具开发、流程优化等（原工具/系统开发） |
+
+### 11.2 二级分类 (sub_type)
+
+`sub_type` 可空，各一级类型对应选项：
+
+| request_type | sub_type 选项 |
+|---|---|
+| 专项报告 | 量化策略 / 固收研究 / 权益研究 / 资产配置 / 其他 |
+| 调研 | 实地调研 / 电话调研 / 其他 |
+| 基金筛选 | （无二级分类） |
+| 定期报告 | 周报 / 月报 / 季报 / 年报 / 其他 |
+| 内部项目 | 系统/工具开发 / 流程优化 / 其他 |
+
+### 11.3 工作模式 (work_mode)
+
+| request_type | work_mode 规则 |
+|---|---|
+| 专项报告 | `user_select`：由用户选择 `service` 或 `proactive` |
+| 调研 / 基金筛选 / 定期报告 / 内部项目 | `locked`：固定为 `service`，前端不展示选项 |
+
+- `service`：销售服务需求，正常流程，`sales_id` 和 `org_name` 必填
+- `proactive`：研究员主动发起，`sales_id` 和 `org_name` 可为空
+
+### 11.4 可见性 (visibility)
+
+| request_type | visibility 默认值 |
+|---|---|
+| 内部项目 | `internal`（不出现在 Feed） |
+| 其余类型 | `public`（出现在 Feed） |
+
+- `visibility` 在提交时由后端按 `request_type` 自动赋值，前端不暴露编辑入口
+- admin 可通过编辑接口手动覆盖
