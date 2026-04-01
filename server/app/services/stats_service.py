@@ -66,6 +66,79 @@ def _period_range(period: str) -> tuple[str, str | None]:
 
 # ─── P6-1: Overview ──────────────────────────────────────────────────────────
 
+def get_my_overview(db: Session, period: str, user_id: int) -> dict:
+    """研究员自身统计概览。
+    - 需求件数：按 created_at 过滤（这段时间创建了多少需求）
+    - 完成工时：按 completed_at 过滤（这段时间真正完成的工作）
+    - 协同工时：协作需求按 completed_at 过滤
+    - 更新工时：RequestUpdate.created_at 过滤，仅计 in_progress 需求（避免与完成工时重叠）
+    """
+    start, end = _period_range(period)
+
+    def add_end(q, col):
+        return q.filter(col < end) if end else q
+
+    # 需求件数
+    count_q = db.query(
+        func.count(Request.id).label("total"),
+        func.sum(case((Request.status == "pending", 1), else_=0)).label("pending"),
+        func.sum(case((Request.status == "in_progress", 1), else_=0)).label("in_progress"),
+        func.sum(case((Request.status == "completed", 1), else_=0)).label("completed"),
+    ).filter(
+        Request.researcher_id == user_id,
+        Request.created_at >= start,
+        Request.status != "canceled",
+    )
+    count_q = add_end(count_q, Request.created_at)
+    counts = count_q.one()
+
+    # 完成工时（主负责，按 completed_at）
+    main_q = db.query(func.coalesce(func.sum(Request.work_hours), 0)).filter(
+        Request.researcher_id == user_id,
+        Request.status == "completed",
+        Request.completed_at >= start,
+    )
+    main_q = add_end(main_q, Request.completed_at)
+    main_hours = main_q.scalar() or 0
+
+    # 协同完成工时（按 completed_at）
+    collab_q = (
+        db.query(func.coalesce(func.sum(RequestCollaborator.work_hours), 0))
+        .join(Request, RequestCollaborator.request_id == Request.id)
+        .filter(
+            RequestCollaborator.user_id == user_id,
+            Request.status == "completed",
+            Request.completed_at >= start,
+        )
+    )
+    collab_q = add_end(collab_q, Request.completed_at)
+    collab_hours = collab_q.scalar() or 0
+
+    # 更新工时（仅 in_progress 需求，按 update created_at，避免与完成工时重叠）
+    update_q = (
+        db.query(func.coalesce(func.sum(RequestUpdate.work_hours), 0))
+        .join(Request, RequestUpdate.request_id == Request.id)
+        .filter(
+            RequestUpdate.user_id == user_id,
+            RequestUpdate.is_deleted == 0,
+            Request.status == "in_progress",
+            RequestUpdate.created_at >= start,
+        )
+    )
+    update_q = add_end(update_q, RequestUpdate.created_at)
+    update_hours = update_q.scalar() or 0
+
+    return {
+        "total": counts.total or 0,
+        "pending": counts.pending or 0,
+        "in_progress": counts.in_progress or 0,
+        "completed": counts.completed or 0,
+        "completed_hours": round(main_hours, 1),
+        "collab_hours": round(collab_hours, 1),
+        "update_hours": round(update_hours, 1),
+    }
+
+
 def get_overview(db: Session, period: str, researcher_id: int | None = None) -> dict:
     start, end = _period_range(period)
     # FIX #1: 排除 canceled (软删除不计入总览)

@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.core.deps import DB, AdminUser, CurrentUser
 from app.services.stats_service import (
-    get_overview, get_researcher_ranking, get_researcher_matrix,
+    get_overview, get_my_overview, get_researcher_ranking, get_researcher_matrix,
     get_type_matrix, get_org_matrix, get_sales_matrix,
     get_charts, get_downloads,
     # v2: detail endpoints
@@ -21,8 +21,8 @@ def overview(db: DB, admin: AdminUser, period: str = "month"):
 
 @router.get("/my-overview")
 def my_overview(db: DB, user: CurrentUser, period: str = "month"):
-    """研究员查看自身统计概览（按 researcher_id + 协作双维度）"""
-    return get_overview(db, period, researcher_id=user.id)
+    """研究员查看自身统计概览（工时按 completed_at 过滤，含协同/更新工时明细）"""
+    return get_my_overview(db, period, user.id)
 
 
 @router.get("/researcher-ranking")

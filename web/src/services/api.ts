@@ -169,7 +169,8 @@ export async function getFeedStats(params?: Record<string, any>) {
 /** 研究员自身统计概览 */
 export async function getMyOverview(period: string) {
   return request<{
-    total: number; pending: number; in_progress: number; completed: number; total_hours: number;
+    total: number; pending: number; in_progress: number; completed: number;
+    completed_hours: number; collab_hours: number; update_hours: number;
   }>('/api/v1/stats/my-overview', { method: 'GET', params: { period } });
 }
 

@@ -27,43 +27,39 @@ const cardStyle = {
   boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
 };
 
+type Overview = {
+  total: number; pending: number; in_progress: number; completed: number;
+  completed_hours: number; collab_hours: number; update_hours: number;
+};
+
+type Detail = {
+  summary: {
+    completed: number; in_progress: number; pending: number; total_hours: number;
+    collab_count: number; collab_hours: number; update_hours: number;
+  };
+  daily_trend: { day: string; count: number }[];
+  type_distribution: { name: string; value: number }[];
+  today_requests: {
+    id: number; title: string; request_type: string; status: string;
+    work_hours?: number; completed_at?: string; created_at?: string;
+  }[];
+};
+
 const MyStats: React.FC = () => {
   const [period, setPeriod] = useState<Period>('month');
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
-
-  const [overview, setOverview] = useState<{
-    total: number; pending: number; in_progress: number; completed: number; total_hours: number;
-  } | null>(null);
-  const [detail, setDetail] = useState<{
-    summary: {
-      completed: number; in_progress: number; pending: number; total_hours: number;
-      collab_count: number; collab_hours: number; update_hours: number;
-    };
-    daily_trend: { day: string; count: number }[];
-    type_distribution: { name: string; value: number }[];
-    today_requests: {
-      id: number; title: string; request_type: string; status: string;
-      work_hours?: number; completed_at?: string; created_at?: string;
-    }[];
-  } | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [detail, setDetail] = useState<Detail | null>(null);
 
   const fetchOverview = async (p: Period) => {
     setOverviewLoading(true);
-    try {
-      setOverview(await getMyOverview(p));
-    } catch { /* ignore */ } finally {
-      setOverviewLoading(false);
-    }
+    try { setOverview(await getMyOverview(p)); } catch { /* ignore */ } finally { setOverviewLoading(false); }
   };
 
   const fetchDetail = async (p: Period) => {
     setDetailLoading(true);
-    try {
-      setDetail(await getMyDetail(p));
-    } catch { /* ignore */ } finally {
-      setDetailLoading(false);
-    }
+    try { setDetail(await getMyDetail(p)); } catch { /* ignore */ } finally { setDetailLoading(false); }
   };
 
   useEffect(() => {
@@ -71,12 +67,7 @@ const MyStats: React.FC = () => {
     fetchDetail(period);
   }, [period]);
 
-  const summary = detail?.summary;
-
-  // 今日专属：额外展示更新工时
   const isToday = period === 'today';
-  // 今年专属：展示协作统计
-  const isYear = period === 'year';
 
   return (
     <PageContainer title="数据统计">
@@ -87,17 +78,17 @@ const MyStats: React.FC = () => {
         style={{ marginBottom: 16 }}
       />
 
-      {/* 核心统计卡片（随 period 变化） */}
+      {/* 统计卡片（随 period 变化） */}
       <Spin spinning={overviewLoading}>
         <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+          {/* 需求件数 */}
           {[
-            { title: '创建需求', value: overview?.total ?? '-', color: '#1677ff' },
-            { title: '已完成', value: overview?.completed ?? '-', color: '#52c41a' },
-            { title: '处理中', value: overview?.in_progress ?? '-', color: '#fa8c16' },
-            { title: '待处理', value: overview?.pending ?? '-', color: '#722ed1' },
-            { title: '完成工时 (h)', value: overview?.total_hours ?? '-', color: '#13c2c2' },
+            { title: '创建需求', value: overview?.total ?? '-', color: '#1677ff', tip: undefined },
+            { title: '已完成', value: overview?.completed ?? '-', color: '#52c41a', tip: undefined },
+            { title: '处理中', value: overview?.in_progress ?? '-', color: '#fa8c16', tip: undefined },
+            { title: '待处理', value: overview?.pending ?? '-', color: '#722ed1', tip: undefined },
           ].map((item) => (
-            <Col key={item.title} xs={12} sm={8} md={6} lg={4}>
+            <Col key={item.title} xs={12} sm={6} md={5} lg={4}>
               <Card style={{ ...cardStyle, textAlign: 'center' }}>
                 <Statistic
                   title={item.title}
@@ -108,48 +99,36 @@ const MyStats: React.FC = () => {
             </Col>
           ))}
 
-          {/* 今日：额外展示进行中已记录工时 */}
-          {isToday && summary && (
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Card style={{ ...cardStyle, textAlign: 'center' }}>
-                <Tooltip title="进行中需求通过进度更新已记录的工时（尚未完成）">
-                  <Statistic
-                    title="更新工时 (h)"
-                    value={summary.update_hours}
-                    valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
-                  />
-                </Tooltip>
-              </Card>
-            </Col>
-          )}
+          {/* 完成工时：按 completed_at 过滤，小字显示协同来源 */}
+          <Col xs={12} sm={6} md={5} lg={4}>
+            <Card style={{ ...cardStyle, textAlign: 'center' }}>
+              <Tooltip title="本期 completed_at 在此时间范围内完成的需求工时（主负责）">
+                <Statistic
+                  title="完成工时 (h)"
+                  value={overview?.completed_hours ?? '-'}
+                  valueStyle={{ color: '#13c2c2', fontWeight: 600, fontSize: 22 }}
+                />
+              </Tooltip>
+              {overview && overview.collab_hours > 0 && (
+                <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+                  含协同 {overview.collab_hours}h
+                </div>
+              )}
+            </Card>
+          </Col>
 
-          {/* 今年：额外展示协作统计 */}
-          {isYear && summary && (
-            <>
-              <Col xs={12} sm={8} md={6} lg={4}>
-                <Card style={{ ...cardStyle, textAlign: 'center' }}>
-                  <Tooltip title="作为协作者参与并完成的需求件数（历史全量）">
-                    <Statistic
-                      title="协作完成 (件)"
-                      value={summary.collab_count}
-                      valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
-                    />
-                  </Tooltip>
-                </Card>
-              </Col>
-              <Col xs={12} sm={8} md={6} lg={4}>
-                <Card style={{ ...cardStyle, textAlign: 'center' }}>
-                  <Tooltip title="协作参与的总工时（历史全量）">
-                    <Statistic
-                      title="协作工时 (h)"
-                      value={summary.collab_hours}
-                      valueStyle={{ color: '#722ed1', fontWeight: 600, fontSize: 22 }}
-                    />
-                  </Tooltip>
-                </Card>
-              </Col>
-            </>
-          )}
+          {/* 进行中工时：本期内填写的进度更新工时，仅统计仍在进行中的需求 */}
+          <Col xs={12} sm={6} md={5} lg={4}>
+            <Card style={{ ...cardStyle, textAlign: 'center' }}>
+              <Tooltip title="本期内通过进度更新记录的工时（仅统计当前仍在进行中的需求，已完成的不重复计算）">
+                <Statistic
+                  title="进行中工时 (h)"
+                  value={overview?.update_hours ?? '-'}
+                  valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
+                />
+              </Tooltip>
+            </Card>
+          </Col>
         </Row>
       </Spin>
 
