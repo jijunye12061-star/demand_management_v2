@@ -8,13 +8,14 @@ import {
 import { getMyOverview, getMyDetail } from '@/services/api';
 import { STATUS_ENUM } from '@/utils/constants';
 
-type Period = 'today' | 'week' | 'month' | 'quarter' | 'year';
+type Period = 'today' | 'week' | 'last_week' | 'month' | 'last_month' | 'year';
 
 const PERIOD_OPTIONS = [
   { label: '今日', value: 'today' },
   { label: '本周', value: 'week' },
+  { label: '上周', value: 'last_week' },
   { label: '本月', value: 'month' },
-  { label: '当季', value: 'quarter' },
+  { label: '上月', value: 'last_month' },
   { label: '今年', value: 'year' },
 ];
 
@@ -56,19 +57,26 @@ const MyStats: React.FC = () => {
     }
   };
 
-  const fetchDetail = async () => {
+  const fetchDetail = async (p: Period) => {
     setDetailLoading(true);
     try {
-      setDetail(await getMyDetail());
+      setDetail(await getMyDetail(p));
     } catch { /* ignore */ } finally {
       setDetailLoading(false);
     }
   };
 
-  useEffect(() => { fetchOverview(period); }, [period]);
-  useEffect(() => { fetchDetail(); }, []);
+  useEffect(() => {
+    fetchOverview(period);
+    fetchDetail(period);
+  }, [period]);
 
   const summary = detail?.summary;
+
+  // 今日专属：额外展示更新工时
+  const isToday = period === 'today';
+  // 今年专属：展示协作统计
+  const isYear = period === 'year';
 
   return (
     <PageContainer title="数据统计">
@@ -79,7 +87,7 @@ const MyStats: React.FC = () => {
         style={{ marginBottom: 16 }}
       />
 
-      {/* 概览统计卡片（随 period 变化） */}
+      {/* 核心统计卡片（随 period 变化） */}
       <Spin spinning={overviewLoading}>
         <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
           {[
@@ -99,63 +107,56 @@ const MyStats: React.FC = () => {
               </Card>
             </Col>
           ))}
+
+          {/* 今日：额外展示进行中已记录工时 */}
+          {isToday && summary && (
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Card style={{ ...cardStyle, textAlign: 'center' }}>
+                <Tooltip title="进行中需求通过进度更新已记录的工时（尚未完成）">
+                  <Statistic
+                    title="更新工时 (h)"
+                    value={summary.update_hours}
+                    valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
+                  />
+                </Tooltip>
+              </Card>
+            </Col>
+          )}
+
+          {/* 今年：额外展示协作统计 */}
+          {isYear && summary && (
+            <>
+              <Col xs={12} sm={8} md={6} lg={4}>
+                <Card style={{ ...cardStyle, textAlign: 'center' }}>
+                  <Tooltip title="作为协作者参与并完成的需求件数（历史全量）">
+                    <Statistic
+                      title="协作完成 (件)"
+                      value={summary.collab_count}
+                      valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
+                    />
+                  </Tooltip>
+                </Card>
+              </Col>
+              <Col xs={12} sm={8} md={6} lg={4}>
+                <Card style={{ ...cardStyle, textAlign: 'center' }}>
+                  <Tooltip title="协作参与的总工时（历史全量）">
+                    <Statistic
+                      title="协作工时 (h)"
+                      value={summary.collab_hours}
+                      valueStyle={{ color: '#722ed1', fontWeight: 600, fontSize: 22 }}
+                    />
+                  </Tooltip>
+                </Card>
+              </Col>
+            </>
+          )}
         </Row>
       </Spin>
-
-      {/* 工时详情卡片（历史全量，不随 period 变化） */}
-      {summary && (
-        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-          <Col xs={12} sm={8} md={6} lg={4}>
-            <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Tooltip title="已完成需求的主负责工时合计">
-                <Statistic
-                  title="历史总工时 (h)"
-                  value={summary.total_hours}
-                  valueStyle={{ color: '#1677ff', fontWeight: 600, fontSize: 22 }}
-                />
-              </Tooltip>
-            </Card>
-          </Col>
-          <Col xs={12} sm={8} md={6} lg={4}>
-            <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Tooltip title="进行中需求的进度更新已记录工时（尚未完成）">
-                <Statistic
-                  title="进行中已记录工时 (h)"
-                  value={summary.update_hours}
-                  valueStyle={{ color: '#fa8c16', fontWeight: 600, fontSize: 22 }}
-                />
-              </Tooltip>
-            </Card>
-          </Col>
-          <Col xs={12} sm={8} md={6} lg={4}>
-            <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Tooltip title="作为协作者参与并完成的需求件数">
-                <Statistic
-                  title="协作完成 (件)"
-                  value={summary.collab_count}
-                  valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
-                />
-              </Tooltip>
-            </Card>
-          </Col>
-          <Col xs={12} sm={8} md={6} lg={4}>
-            <Card style={{ ...cardStyle, textAlign: 'center' }}>
-              <Tooltip title="协作参与的总工时">
-                <Statistic
-                  title="协作工时 (h)"
-                  value={summary.collab_hours}
-                  valueStyle={{ color: '#722ed1', fontWeight: 600, fontSize: 22 }}
-                />
-              </Tooltip>
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       {/* 图表区域 */}
       <Spin spinning={detailLoading}>
         <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
-          {/* 近 15 天完成趋势 */}
+          {/* 近 15 天完成趋势（固定，不随 period 变化） */}
           <Col xs={24} lg={14}>
             <Card title={<span style={{ fontWeight: 600 }}>近 15 天完成趋势</span>} style={cardStyle}>
               {detail?.daily_trend?.length ? (
@@ -168,7 +169,7 @@ const MyStats: React.FC = () => {
                       tickLine={false}
                       axisLine={{ stroke: '#f0f0f0' }}
                       tick={{ fill: '#8c8c8c' }}
-                      tickFormatter={(v) => v.slice(5)} // 只显示 MM-DD
+                      tickFormatter={(v) => v.slice(5)}
                     />
                     <YAxis allowDecimals={false} fontSize={11} tickLine={false} axisLine={false} tick={{ fill: '#8c8c8c' }} />
                     <RTooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
@@ -181,9 +182,13 @@ const MyStats: React.FC = () => {
             </Card>
           </Col>
 
-          {/* 需求类型分布 */}
+          {/* 需求类型分布（随 period 变化） */}
           <Col xs={24} lg={10}>
-            <Card title={<span style={{ fontWeight: 600 }}>需求类型分布（历史）</span>} style={cardStyle}>
+            <Card
+              title={<span style={{ fontWeight: 600 }}>需求类型分布</span>}
+              extra={<span style={{ color: '#8c8c8c', fontSize: 12 }}>{PERIOD_OPTIONS.find(o => o.value === period)?.label}</span>}
+              style={cardStyle}
+            >
               {detail?.type_distribution?.length ? (
                 <ResponsiveContainer width="100%" height={240}>
                   <PieChart>
@@ -212,52 +217,54 @@ const MyStats: React.FC = () => {
           </Col>
         </Row>
 
-        {/* 今日相关需求列表 */}
-        <Card
-          title={<span style={{ fontWeight: 600 }}>今日相关需求</span>}
-          extra={<span style={{ color: '#8c8c8c', fontSize: 13 }}>今日创建/完成/有进度更新的需求</span>}
-          style={cardStyle}
-        >
-          {detail?.today_requests?.length ? (
-            <List
-              dataSource={detail.today_requests}
-              size="small"
-              renderItem={(item) => {
-                const statusCfg = STATUS_ENUM[item.status];
-                return (
-                  <List.Item
-                    extra={
-                      item.work_hours != null && item.work_hours > 0
-                        ? <span style={{ color: '#8c8c8c', fontSize: 12 }}>{item.work_hours}h</span>
-                        : null
-                    }
-                  >
-                    <List.Item.Meta
-                      title={
-                        <span>
-                          <span style={{ marginRight: 8 }}>{item.title}</span>
-                          <Tag color="blue" style={{ fontSize: 11 }}>{item.request_type}</Tag>
-                          <Tag color={statusCfg?.status?.toLowerCase()} style={{ fontSize: 11 }}>
-                            {statusCfg?.text || item.status}
-                          </Tag>
-                        </span>
+        {/* 今日相关需求列表（仅今日模式显示） */}
+        {isToday && (
+          <Card
+            title={<span style={{ fontWeight: 600 }}>今日相关需求</span>}
+            extra={<span style={{ color: '#8c8c8c', fontSize: 13 }}>今日创建/完成/有进度更新的需求</span>}
+            style={cardStyle}
+          >
+            {detail?.today_requests?.length ? (
+              <List
+                dataSource={detail.today_requests}
+                size="small"
+                renderItem={(item) => {
+                  const statusCfg = STATUS_ENUM[item.status];
+                  return (
+                    <List.Item
+                      extra={
+                        item.work_hours != null && item.work_hours > 0
+                          ? <span style={{ color: '#8c8c8c', fontSize: 12 }}>{item.work_hours}h</span>
+                          : null
                       }
-                      description={
-                        <span style={{ fontSize: 12, color: '#8c8c8c' }}>
-                          {item.completed_at
-                            ? `完成: ${item.completed_at.slice(0, 16)}`
-                            : `创建: ${item.created_at?.slice(0, 16) ?? ''}`}
-                        </span>
-                      }
-                    />
-                  </List.Item>
-                );
-              }}
-            />
-          ) : (
-            <Empty description="今日暂无相关需求" style={{ padding: '24px 0' }} />
-          )}
-        </Card>
+                    >
+                      <List.Item.Meta
+                        title={
+                          <span>
+                            <span style={{ marginRight: 8 }}>{item.title}</span>
+                            <Tag color="blue" style={{ fontSize: 11 }}>{item.request_type}</Tag>
+                            <Tag color={statusCfg?.status?.toLowerCase()} style={{ fontSize: 11 }}>
+                              {statusCfg?.text || item.status}
+                            </Tag>
+                          </span>
+                        }
+                        description={
+                          <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+                            {item.completed_at
+                              ? `完成: ${item.completed_at.slice(0, 16)}`
+                              : `创建: ${item.created_at?.slice(0, 16) ?? ''}`}
+                          </span>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
+              />
+            ) : (
+              <Empty description="今日暂无相关需求" style={{ padding: '24px 0' }} />
+            )}
+          </Card>
+        )}
       </Spin>
     </PageContainer>
   );

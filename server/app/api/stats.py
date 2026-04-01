@@ -41,9 +41,9 @@ def researcher_detail(db: DB, admin: AdminUser, user_id: int):
 
 
 @router.get("/my-detail")
-def my_detail(db: DB, user: CurrentUser):
-    """研究员查看自身详细统计（周趋势+类型分布）"""
-    return get_researcher_detail(db, user.id)
+def my_detail(db: DB, user: CurrentUser, period: str = "year"):
+    """研究员查看自身详细统计（日趋势+类型分布+今日需求）"""
+    return get_researcher_detail(db, user.id, period)
 
 
 @router.get("/type-matrix")

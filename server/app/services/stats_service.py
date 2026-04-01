@@ -41,10 +41,33 @@ def _period_start(period: str) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _period_range(period: str) -> tuple[str, str | None]:
+    """返回 (start, end)，end=None 表示截止到现在。
+    last_week / last_month 返回精确范围，其余复用 _period_start。"""
+    now = datetime.now(BJT)
+    match period:
+        case "last_week":
+            last_monday = (now - timedelta(days=now.weekday() + 7)).replace(
+                hour=0, minute=0, second=0, microsecond=0)
+            this_monday = last_monday + timedelta(days=7)  # exclusive end
+            return last_monday.strftime("%Y-%m-%d %H:%M:%S"), this_monday.strftime("%Y-%m-%d %H:%M:%S")
+        case "last_month":
+            this_first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if now.month == 1:
+                last_first = now.replace(year=now.year - 1, month=12, day=1,
+                                         hour=0, minute=0, second=0, microsecond=0)
+            else:
+                last_first = now.replace(month=now.month - 1, day=1,
+                                         hour=0, minute=0, second=0, microsecond=0)
+            return last_first.strftime("%Y-%m-%d %H:%M:%S"), this_first.strftime("%Y-%m-%d %H:%M:%S")
+        case _:
+            return _period_start(period), None
+
+
 # ─── P6-1: Overview ──────────────────────────────────────────────────────────
 
 def get_overview(db: Session, period: str, researcher_id: int | None = None) -> dict:
-    start = _period_start(period)
+    start, end = _period_range(period)
     # FIX #1: 排除 canceled (软删除不计入总览)
     q = db.query(
         func.count(Request.id).label("total"),
@@ -58,6 +81,8 @@ def get_overview(db: Session, period: str, researcher_id: int | None = None) -> 
         Request.created_at >= start,
         Request.status != "canceled",
     )
+    if end:
+        q = q.filter(Request.created_at < end)
     if researcher_id is not None:
         q = q.filter(Request.researcher_id == researcher_id)
     rows = q.one()
@@ -67,6 +92,8 @@ def get_overview(db: Session, period: str, researcher_id: int | None = None) -> 
         .join(Request, RequestCollaborator.request_id == Request.id)
         .filter(Request.status == "completed", Request.created_at >= start)
     )
+    if end:
+        collab_q = collab_q.filter(Request.created_at < end)
     if researcher_id is not None:
         collab_q = collab_q.filter(RequestCollaborator.user_id == researcher_id)
     collab_hours = collab_q.scalar()
@@ -373,7 +400,7 @@ def _daily_trend(db: Session, filters: list) -> list[dict]:
 
 # ─── Researcher detail ────────────────────────────────────────────────────────
 
-def get_researcher_detail(db: Session, user_id: int) -> dict:
+def get_researcher_detail(db: Session, user_id: int, period: str = "year") -> dict:
     base = Request.researcher_id == user_id
     summary = db.query(
         func.sum(case((Request.status == "completed", 1), else_=0)).label("completed"),
@@ -382,11 +409,15 @@ def get_researcher_detail(db: Session, user_id: int) -> dict:
         func.coalesce(func.sum(case((Request.status == "completed", Request.work_hours), else_=0)), 0).label("total_hours"),
     ).filter(base).first()
 
-    type_dist = (
+    # 类型分布随 period 过滤
+    type_start, type_end = _period_range(period)
+    type_dist_q = (
         db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
-        .filter(base, Request.status == "completed")
-        .group_by(Request.request_type).all()
+        .filter(base, Request.status == "completed", Request.completed_at >= type_start)
     )
+    if type_end:
+        type_dist_q = type_dist_q.filter(Request.completed_at < type_end)
+    type_dist = type_dist_q.group_by(Request.request_type).all()
     org_dist = (
         db.query(func.coalesce(Request.org_name, "未知").label("name"), func.count(Request.id).label("value"))
         .filter(base, Request.status == "completed")

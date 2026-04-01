@@ -174,7 +174,7 @@ export async function getMyOverview(period: string) {
 }
 
 /** 研究员自身详细统计（日趋势+类型分布+今日需求） */
-export async function getMyDetail() {
+export async function getMyDetail(period: string = 'year') {
   return request<{
     summary: {
       completed: number; in_progress: number; pending: number; total_hours: number;
@@ -187,5 +187,5 @@ export async function getMyDetail() {
       id: number; title: string; request_type: string; status: string;
       work_hours?: number; completed_at?: string; created_at?: string;
     }[];
-  }>('/api/v1/stats/my-detail', { method: 'GET' });
+  }>('/api/v1/stats/my-detail', { method: 'GET', params: { period } });
 }
