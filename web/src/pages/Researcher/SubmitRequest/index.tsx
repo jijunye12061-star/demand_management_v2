@@ -8,12 +8,13 @@ import {
   ProFormSwitch,
   ProFormDateTimePicker,
   ProFormDependency,
+  ProFormRadio,
 } from '@ant-design/pro-components';
 import { Alert, App, Form, Card } from 'antd';
 import { useModel, useNavigate } from '@umijs/max';
 import { getOrganizations, getResearchers, getSales, createRequest, searchLinkableRequests } from '@/services/api';
 import type { Organization, SalesUser } from '@/services/typings';
-import { REQUEST_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
+import { REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, WORK_MODE_RULES, WORK_MODE_OPTIONS, VISIBILITY_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
 import dayjs from 'dayjs';
 
 const SubmitRequest: React.FC = () => {
@@ -162,12 +163,36 @@ const SubmitRequest: React.FC = () => {
             rules={[{ required: true, message: '请选择需求类型' }]}
             fieldProps={{
               onChange: (val: string) => {
-                if (val === '工具/系统开发') {
-                  form.setFieldsValue({ research_scope: '不涉及' });
-                }
+                form.setFieldValue('sub_type', undefined);
+                form.setFieldValue('work_mode', WORK_MODE_RULES[val]?.default || WORK_MODE_RULES[val]?.value || 'service');
+                // 内部项目默认 internal，其余默认 public
+                form.setFieldValue('visibility', val === '内部项目' ? 'internal' : 'public');
+                // 清空机构相关字段
+                form.setFieldsValue({ sales_id: undefined, org_name: undefined, org_type: undefined, department: undefined });
+                setSelectedTeamId(null);
+                setIsAdminSales(false);
+                setOrgList([]);
               },
             }}
           />
+
+          {/* 二级分类（联动） */}
+          <ProFormDependency name={['request_type']}>
+            {({ request_type }) => {
+              const subOpts = SUB_TYPE_OPTIONS[request_type];
+              if (!subOpts) return <div style={{ display: 'none' }} />;
+              return (
+                <ProFormSelect
+                  name="sub_type"
+                  label="二级分类"
+                  options={subOpts}
+                  colProps={{ span: 12 }}
+                  placeholder="请选择二级分类（选填）"
+                />
+              );
+            }}
+          </ProFormDependency>
+
           <ProFormSelect
             name="research_scope"
             label="研究范围"
@@ -176,26 +201,52 @@ const SubmitRequest: React.FC = () => {
             placeholder="请选择研究范围"
           />
 
-          <ProFormDependency name={['request_type']}>
-            {({ request_type }) => {
-              const isFieldResearch = request_type === '调研';
+          {/* 可见性 */}
+          <ProFormSelect
+            name="visibility"
+            label="可见性"
+            colProps={{ span: 12 }}
+            options={VISIBILITY_OPTIONS}
+            initialValue="public"
+          />
+
+          {/* 需求类型联动区 */}
+          <ProFormDependency name={['request_type', 'work_mode']}>
+            {({ request_type, work_mode }) => {
+              const rule = WORK_MODE_RULES[request_type];
+              const isProactiveLocked = rule?.mode === 'locked' && rule?.value === 'proactive';
+              const isUserSelect = rule?.mode === 'user_select';
+              const isServiceLocked = rule?.mode === 'locked' && rule?.value === 'service';
+              // proactive 锁定：调研/定期报告/内部项目
+              const showOrgFields = isServiceLocked || (isUserSelect && work_mode !== 'proactive');
+
               return (
                 <>
-                  {isFieldResearch && (
+                  {isProactiveLocked && (
                     <Alert
                       style={{ marginBottom: 16, width: '100%' }}
                       type="info"
                       showIcon
-                      message="调研模式：记录您的实地/线上调研成果，完成后将出现在需求动态供全员浏览。"
+                      message="此类型需求将直接进入处理中，无需关联销售/机构。"
                     />
                   )}
 
-                  {!isFieldResearch && (
+                  {isUserSelect && (
+                    <ProFormRadio.Group
+                      name="work_mode"
+                      label="工作模式"
+                      colProps={{ span: 12 }}
+                      options={WORK_MODE_OPTIONS}
+                      initialValue="service"
+                    />
+                  )}
+
+                  {!isProactiveLocked && (
                     <ProFormSelect
                       name="sales_id"
                       label="代提销售"
                       colProps={{ span: 12 }}
-                      rules={[{ required: true, message: '请选择代提的销售' }]}
+                      rules={showOrgFields ? [{ required: true, message: '请选择代提的销售' }] : []}
                       request={async () => {
                         const data = await getSales();
                         setSalesList(data);
@@ -221,14 +272,7 @@ const SubmitRequest: React.FC = () => {
                     fieldProps={{ showSearch: true }}
                   />
 
-                  {isFieldResearch ? (
-                    <ProFormText
-                      name="org_name"
-                      label="调研对象"
-                      colProps={{ span: 12 }}
-                      placeholder={'请输入调研对象（如基金公司名称），留空则默认为"内部调研"'}
-                    />
-                  ) : (
+                  {showOrgFields && (
                     <>
                       <ProFormSelect
                         name="org_name"
