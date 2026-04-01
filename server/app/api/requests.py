@@ -207,18 +207,18 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
 
 @router.post("")
 def create(body: RequestCreate, db: DB, user: CurrentUser):
-    if body.request_type == "调研":
-        is_self_initiated = 1
-        org_name = body.org_name or "内部调研"
-        org_type = body.org_type
-        department = body.department
+    from app.utils.constants import WORK_MODE_RULES
+
+    # 确定 work_mode：locked 类型强制覆盖，user_select 类型使用前端传值
+    rule = WORK_MODE_RULES.get(body.request_type)
+    if rule and rule["mode"] == "locked":
+        work_mode = rule["value"]
     else:
-        if not body.org_name:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "org_name 必填")
-        is_self_initiated = 0
-        org_name = body.org_name
-        org_type = body.org_type
-        department = body.department
+        work_mode = body.work_mode or "service"
+
+    org_name = body.org_name
+    org_type = body.org_type
+    department = body.department
 
     # 校验 parent_request_id（revision 关联校验）
     # link_type 未传时默认 'sub'（手动关联衍生需求场景的兜底）
@@ -237,7 +237,9 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         department=department,
         researcher_id=body.researcher_id,
         is_confidential=1 if body.is_confidential else 0,
-        is_self_initiated=is_self_initiated,
+        sub_type=body.sub_type,
+        work_mode=work_mode,
+        visibility=body.visibility,
         sales_id=body.sales_id if body.sales_id else user.id,
         created_by=user.id,
         created_at=body.created_at or now_beijing(),

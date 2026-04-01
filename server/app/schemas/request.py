@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -6,14 +8,16 @@ class RequestCreate(BaseModel):
     description: str | None = None
     request_type: str
     research_scope: str | None = None
-    org_name: str | None = None
+    org_name: Optional[str] = None
     org_type: str | None = None
     department: str | None = None
     researcher_id: int
     is_confidential: bool = False
-    is_self_initiated: bool = False
+    sub_type: Optional[str] = None
+    work_mode: str = "service"
+    visibility: str = "public"
     created_at: str | None = None
-    sales_id: int | None = None  # 研究员代提时必填
+    sales_id: Optional[int] = None  # 研究员代提时必填
     parent_request_id: int | None = None
     link_type: str | None = None  # 'revision'
 
@@ -33,6 +37,9 @@ class RequestUpdate(BaseModel):
     result_note: str | None = None
     work_hours: float | None = None
     parent_request_id: int | None = None
+    sub_type: Optional[str] = None
+    work_mode: Optional[str] = None
+    visibility: Optional[str] = None
 
 
 class RequestResponse(BaseModel):
@@ -41,10 +48,10 @@ class RequestResponse(BaseModel):
     description: str | None = None
     request_type: str
     research_scope: str | None = None
-    org_name: str
+    org_name: Optional[str] = None
     org_type: str | None = None
     department: str | None = None
-    sales_id: int
+    sales_id: Optional[int] = None
     researcher_id: int | None = None
     is_confidential: int = 0
     status: str = "pending"
@@ -52,7 +59,9 @@ class RequestResponse(BaseModel):
     attachment_path: str | None = None
     work_hours: float = 0
     withdraw_reason: str | None = None
-    is_self_initiated: int = 0
+    sub_type: Optional[str] = None
+    work_mode: str = "service"
+    visibility: str = "public"
     created_by: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
@@ -85,6 +94,9 @@ class RequestListParams(BaseModel):
     scope: str | None = None  # mine | feed
     page: int = 1
     page_size: int = 20
+    sub_type: Optional[str] = None
+    work_mode: Optional[str] = None
+    visibility: Optional[str] = None
 
 
 class WithdrawRequest(BaseModel):
