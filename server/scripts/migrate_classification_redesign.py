@@ -68,7 +68,6 @@ REQUEST_TYPE_MAPPINGS = [
 
 # 步骤 4a：work_mode 设置（用映射后的 request_type 值）
 WORK_MODE_PROACTIVE_TYPES = ("调研", "定期报告", "内部项目")
-WORK_MODE_SERVICE_TYPES   = ("基金筛选", "专项报告")
 
 # 步骤 4b：visibility 设置
 VISIBILITY_INTERNAL_TYPES = ("内部项目",)
@@ -95,6 +94,7 @@ def get_table_indexes(cur: sqlite3.Cursor, table: str) -> list:
 
 def step_add_columns(cur: sqlite3.Cursor, table: str, dry_run: bool):
     """幂等添加 NEW_COLUMNS 到指定表"""
+    assert table in {"requests", "request_templates"}, f"未知表名: {table}"
     existing = get_existing_columns(cur, table)
     for col_name, col_def in NEW_COLUMNS:
         if col_name in existing:
@@ -203,6 +203,7 @@ def rebuild_table(cur: sqlite3.Cursor, table: str, dry_run: bool):
     5. ALTER TABLE {table}_new RENAME TO {table}
     6. 重建索引
     """
+    assert table in {"requests", "request_templates"}, f"未知表名: {table}"
     log("\n[REBUILD] 重建 {} 表...".format(table))
 
     # 获取现有列信息
@@ -390,11 +391,19 @@ def main():
         log("旧备份另存为: {}".format(extra.name))
 
     log("备份到      : {}".format(backup_path))
-    src_conn = sqlite3.connect(str(db_path))
-    dst_conn = sqlite3.connect(str(backup_path))
-    src_conn.backup(dst_conn)
-    dst_conn.close()
-    src_conn.close()
+    try:
+        src_conn = sqlite3.connect(str(db_path))
+        dst_conn = sqlite3.connect(str(backup_path))
+        src_conn.backup(dst_conn)
+    finally:
+        try:
+            dst_conn.close()
+        except Exception:
+            pass
+        try:
+            src_conn.close()
+        except Exception:
+            pass
     log("备份完成。\n")
 
     # ── 执行迁移 ──────────────────────────────────────────────────────────────
