@@ -23,7 +23,7 @@ class Request(Base):
     attachment_path: Mapped[str | None] = mapped_column(Text)
     work_hours: Mapped[float] = mapped_column(Float, default=0)
     withdraw_reason: Mapped[str | None] = mapped_column(Text)  # 研究员退回原因
-    sub_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sub_type: Mapped[str | None] = mapped_column(Text)
     work_mode: Mapped[str] = mapped_column(Text, default="service")
     visibility: Mapped[str] = mapped_column(Text, default="public")
     automation_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
