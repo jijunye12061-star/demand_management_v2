@@ -99,7 +99,7 @@ const MyStats: React.FC = () => {
             </Col>
           ))}
 
-          {/* 总工时 = 完成工时 + 协同工时 + 进行中更新工时 */}
+          {/* 总工时 = 完成 + 协同 + 进行中，小字标注协同来源 */}
           <Col xs={12} sm={6} md={5} lg={4}>
             <Card style={{ ...cardStyle, textAlign: 'center' }}>
               <Statistic
@@ -109,11 +109,25 @@ const MyStats: React.FC = () => {
                   : '-'}
                 valueStyle={{ color: '#13c2c2', fontWeight: 600, fontSize: 22 }}
               />
-              {overview != null && overview.update_hours > 0 && (
+              {overview != null && overview.collab_hours > 0 && (
                 <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
-                  其中进行中 {overview.update_hours}h 尚未完成
+                  含协同 {overview.collab_hours}h
                 </div>
               )}
+            </Card>
+          </Col>
+
+          {/* 进行中工时：还没完成的需求里已记录的工时 */}
+          <Col xs={12} sm={6} md={5} lg={4}>
+            <Card style={{ ...cardStyle, textAlign: 'center' }}>
+              <Statistic
+                title="其中，进行中 (h)"
+                value={overview?.update_hours ?? '-'}
+                valueStyle={{ color: '#eb2f96', fontWeight: 600, fontSize: 22 }}
+              />
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>
+                还没完成的需求已记录工时
+              </div>
             </Card>
           </Col>
         </Row>
