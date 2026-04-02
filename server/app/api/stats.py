@@ -20,9 +20,9 @@ def overview(db: DB, admin: AdminUser, period: str = "month"):
 
 
 @router.get("/my-overview")
-def my_overview(db: DB, user: CurrentUser, period: str = "month"):
+def my_overview(db: DB, user: CurrentUser, period: str = "month", date_from: str | None = None, date_to: str | None = None):
     """研究员查看自身统计概览（工时按 completed_at 过滤，含协同/更新工时明细）"""
-    return get_my_overview(db, period, user.id)
+    return get_my_overview(db, period, user.id, date_from=date_from, date_to=date_to)
 
 
 @router.get("/researcher-ranking")
@@ -41,9 +41,9 @@ def researcher_detail(db: DB, admin: AdminUser, user_id: int):
 
 
 @router.get("/my-detail")
-def my_detail(db: DB, user: CurrentUser, period: str = "year"):
+def my_detail(db: DB, user: CurrentUser, period: str = "year", date_from: str | None = None, date_to: str | None = None):
     """研究员查看自身详细统计（日趋势+类型分布+今日需求）"""
-    return get_researcher_detail(db, user.id, period)
+    return get_researcher_detail(db, user.id, period, date_from=date_from, date_to=date_to)
 
 
 @router.get("/type-matrix")

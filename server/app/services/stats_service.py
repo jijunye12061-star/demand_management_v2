@@ -66,14 +66,18 @@ def _period_range(period: str) -> tuple[str, str | None]:
 
 # ─── P6-1: Overview ──────────────────────────────────────────────────────────
 
-def get_my_overview(db: Session, period: str, user_id: int) -> dict:
+def get_my_overview(db: Session, period: str, user_id: int, *, date_from: str | None = None, date_to: str | None = None) -> dict:
     """研究员自身统计概览。
     - 需求件数：按 created_at 过滤（这段时间创建了多少需求）
     - 完成工时：按 completed_at 过滤（这段时间真正完成的工作）
     - 协同工时：协作需求按 completed_at 过滤
     - 更新工时：RequestUpdate.created_at 过滤，仅计 in_progress 需求（避免与完成工时重叠）
     """
-    start, end = _period_range(period)
+    if date_from and date_to:
+        start = date_from + " 00:00:00"
+        end = date_to + " 23:59:59"
+    else:
+        start, end = _period_range(period)
 
     def add_end(q, col):
         return q.filter(col < end) if end else q
@@ -470,7 +474,7 @@ def get_downloads(db: Session) -> dict:
 # ─── Daily trend helper ───────────────────────────────────────────────────────
 
 def _daily_trend(db: Session, filters: list) -> list[dict]:
-    """近 15 天每日完成件数，无数据的日期补 0。filters 为额外的 .filter() 条件列表。"""
+    """近 15 天每日完成件数和工时，无数据的日期补 0。filters 为额外的 .filter() 条件列表。"""
     now = datetime.now(BJT)
     start_dt = (now - timedelta(days=14)).replace(hour=0, minute=0, second=0, microsecond=0)
     start = start_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -478,6 +482,7 @@ def _daily_trend(db: Session, filters: list) -> list[dict]:
         db.query(
             func.strftime("%Y-%m-%d", Request.completed_at).label("day"),
             func.count(Request.id).label("count"),
+            func.coalesce(func.sum(Request.work_hours), 0).label("hours"),
         )
         .filter(Request.status == "completed", Request.completed_at >= start)
     )
@@ -485,17 +490,18 @@ def _daily_trend(db: Session, filters: list) -> list[dict]:
         q = q.filter(f)
     rows = q.group_by("day").order_by("day").all()
     # 补全缺失日期为 0
-    counts = {r.day: r.count for r in rows}
+    day_map = {r.day: (r.count, float(r.hours or 0)) for r in rows}
     result = []
     for i in range(15):
         d = (start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
-        result.append({"day": d, "count": counts.get(d, 0)})
+        c, h = day_map.get(d, (0, 0.0))
+        result.append({"day": d, "count": c, "hours": round(h, 1)})
     return result
 
 
 # ─── Researcher detail ────────────────────────────────────────────────────────
 
-def get_researcher_detail(db: Session, user_id: int, period: str = "year") -> dict:
+def get_researcher_detail(db: Session, user_id: int, period: str = "year", *, date_from: str | None = None, date_to: str | None = None) -> dict:
     base = Request.researcher_id == user_id
     summary = db.query(
         func.sum(case((Request.status == "completed", 1), else_=0)).label("completed"),
@@ -504,8 +510,12 @@ def get_researcher_detail(db: Session, user_id: int, period: str = "year") -> di
         func.coalesce(func.sum(case((Request.status == "completed", Request.work_hours), else_=0)), 0).label("total_hours"),
     ).filter(base).first()
 
-    # 类型分布随 period 过滤
-    type_start, type_end = _period_range(period)
+    # 类型分布和机构类型分布随 period 或自定义区间过滤
+    if date_from and date_to:
+        type_start = date_from + " 00:00:00"
+        type_end = date_to + " 23:59:59"
+    else:
+        type_start, type_end = _period_range(period)
     type_dist_q = (
         db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
         .filter(base, Request.status == "completed", Request.completed_at >= type_start)
@@ -513,6 +523,15 @@ def get_researcher_detail(db: Session, user_id: int, period: str = "year") -> di
     if type_end:
         type_dist_q = type_dist_q.filter(Request.completed_at < type_end)
     type_dist = type_dist_q.group_by(Request.request_type).all()
+
+    org_type_dist_q = (
+        db.query(func.coalesce(Request.org_type, "未知").label("name"), func.count(Request.id).label("value"))
+        .filter(base, Request.status == "completed", Request.completed_at >= type_start)
+    )
+    if type_end:
+        org_type_dist_q = org_type_dist_q.filter(Request.completed_at < type_end)
+    org_type_dist = org_type_dist_q.group_by(Request.org_type).order_by(text("value DESC")).all()
+
     org_dist = (
         db.query(func.coalesce(Request.org_name, "未知").label("name"), func.count(Request.id).label("value"))
         .filter(base, Request.status == "completed")
@@ -595,6 +614,7 @@ def get_researcher_detail(db: Session, user_id: int, period: str = "year") -> di
         },
         "daily_trend": _daily_trend(db, [base]),
         "type_distribution": [{"name": r.name or "未知", "value": r.value} for r in type_dist],
+        "org_type_distribution": [{"name": r.name, "value": r.value} for r in org_type_dist],
         "org_distribution": [{"name": r.name, "value": r.value} for r in org_dist],
         "today_requests": [
             {

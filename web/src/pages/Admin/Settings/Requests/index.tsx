@@ -98,6 +98,17 @@ const Requests: React.FC = () => {
     { title: '销售', dataIndex: 'sales_name', width: 80, hideInSearch: true },
     { title: '研究员', dataIndex: 'researcher_name', width: 80, hideInSearch: true },
     {
+      title: '研究员筛选', dataIndex: 'researcher_id', hideInTable: true,
+      valueType: 'select',
+      fieldProps: {
+        showSearch: true,
+        optionFilterProp: 'label',
+        options: researcherOptions,
+        placeholder: '按研究员筛选',
+        allowClear: true,
+      },
+    },
+    {
       title: '状态', dataIndex: 'status', width: 80,
       valueType: 'select',
       valueEnum: Object.fromEntries(Object.entries(STATUS_ENUM).map(([k, v]) => [k, { text: v.text }])),

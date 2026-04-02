@@ -167,26 +167,33 @@ export async function getFeedStats(params?: Record<string, any>) {
 }
 
 /** 研究员自身统计概览 */
-export async function getMyOverview(period: string) {
+export async function getMyOverview(period: string, dateFrom?: string, dateTo?: string) {
+  const params: Record<string, string> = { period };
+  if (dateFrom) params.date_from = dateFrom;
+  if (dateTo) params.date_to = dateTo;
   return request<{
     total: number; pending: number; in_progress: number; completed: number;
     completed_hours: number; collab_hours: number; update_hours: number;
-  }>('/api/v1/stats/my-overview', { method: 'GET', params: { period } });
+  }>('/api/v1/stats/my-overview', { method: 'GET', params });
 }
 
 /** 研究员自身详细统计（日趋势+类型分布+今日需求） */
-export async function getMyDetail(period: string = 'year') {
+export async function getMyDetail(period: string = 'year', dateFrom?: string, dateTo?: string) {
+  const params: Record<string, string> = { period };
+  if (dateFrom) params.date_from = dateFrom;
+  if (dateTo) params.date_to = dateTo;
   return request<{
     summary: {
       completed: number; in_progress: number; pending: number; total_hours: number;
       collab_count: number; collab_hours: number; update_hours: number;
     };
-    daily_trend: { day: string; count: number }[];
+    daily_trend: { day: string; count: number; hours: number }[];
     type_distribution: { name: string; value: number }[];
+    org_type_distribution: { name: string; value: number }[];
     org_distribution: { name: string; value: number }[];
     today_requests: {
       id: number; title: string; request_type: string; status: string;
       work_hours?: number; completed_at?: string; created_at?: string;
     }[];
-  }>('/api/v1/stats/my-detail', { method: 'GET', params: { period } });
+  }>('/api/v1/stats/my-detail', { method: 'GET', params });
 }
