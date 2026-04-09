@@ -95,6 +95,10 @@ export async function getAllOrganizations() {
   return request<any[]>('/api/v1/organizations');
 }
 
+export async function getUnassignedOrganizations() {
+  return request<any[]>('/api/v1/organizations', { params: { unassigned: true } });
+}
+
 export async function createOrganization(data: { name: string; org_type: string }) {
   return request('/api/v1/organizations', { method: 'POST', data });
 }

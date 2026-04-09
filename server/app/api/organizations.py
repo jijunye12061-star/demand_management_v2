@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.deps import DB, CurrentUser, AdminUser
 from app.models.organization import Organization
 from app.models.team import TeamOrgMapping
+from sqlalchemy import not_
 from app.schemas.organization import OrgCreate, OrgUpdate, OrgResponse
 from app.utils.datetime_utils import now_beijing
 
@@ -16,11 +17,15 @@ router = APIRouter(prefix="/organizations", tags=["机构"])
 
 
 @router.get("", response_model=list[OrgResponse])
-def list_organizations(db: DB, admin: AdminUser, team_id: int | None = None):
-    q = select(Organization).where(Organization.is_deleted == 0)  # ← 新增
+def list_organizations(db: DB, admin: AdminUser, team_id: int | None = None, unassigned: bool = False):
+    q = select(Organization).where(Organization.is_deleted == 0)
     if team_id:
         org_ids = db.execute(select(TeamOrgMapping.org_id).where(TeamOrgMapping.team_id == team_id)).scalars().all()
         q = q.where(Organization.id.in_(org_ids))
+    elif unassigned:
+        assigned_ids = db.execute(select(TeamOrgMapping.org_id)).scalars().all()
+        if assigned_ids:
+            q = q.where(not_(Organization.id.in_(assigned_ids)))
     return db.execute(q.order_by(Organization.name)).scalars().all()
 
 
