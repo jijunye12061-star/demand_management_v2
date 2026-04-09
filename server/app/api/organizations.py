@@ -4,6 +4,7 @@ server/app/api/organizations.py
 """
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.deps import DB, CurrentUser, AdminUser
 from app.models.organization import Organization
@@ -50,7 +51,11 @@ def list_orgs_by_user_team(
 def create_org(body: OrgCreate, db: DB, admin: AdminUser):
     org = Organization(name=body.name, org_type=body.org_type, created_at=now_beijing())
     db.add(org)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"机构名称「{body.name}」已存在")
     db.refresh(org)
     return org
 
@@ -62,7 +67,11 @@ def update_org(org_id: int, body: OrgUpdate, db: DB, admin: AdminUser):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "机构不存在")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(org, k, v)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, f"机构名称「{body.name}」已存在")
     db.refresh(org)
     return org
 
