@@ -189,7 +189,12 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
     if params.completed_at_to:
         q = q.filter(Request.completed_at <= params.completed_at_to + " 23:59:59")
 
-    sort_col = Request.completed_at if params.sort_by == "completed_at" else Request.created_at
+    if params.sort_by == "completed_at":
+        sort_col = Request.completed_at
+    elif params.sort_by == "created_at":
+        sort_col = Request.created_at
+    else:
+        sort_col = Request.submitted_at
     order_clause = sort_col.asc() if params.sort_order == "asc" else sort_col.desc()
 
     total = q.count()
@@ -217,6 +222,7 @@ def query_requests(db: Session, user: User, params: RequestListParams) -> tuple[
                 d[field] = None
 
         items.append(d)
+    # researcher_note 按调用方权限在 API 层过滤，service 层直接透传
 
     # ── 批量拼接协作者名字 + 工时 ──
     request_ids = [item["id"] for item in items]
@@ -337,6 +343,7 @@ def resubmit_request(db: Session, request_id: int, user: User, updates: dict) ->
         req.is_confidential = 1 if updates["is_confidential"] else 0
     req.status = "pending"
     req.withdraw_reason = None
+    req.submitted_at = now_beijing()
     req.updated_at = now_beijing()
     db.commit()
     db.refresh(req)

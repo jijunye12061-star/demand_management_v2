@@ -15,6 +15,7 @@ class RequestCreate(BaseModel):
     work_mode: str = "service"
     created_at: str | None = None
     sales_id: int | None = None  # 研究员代提时必填
+    submitted_at: str | None = None
     parent_request_id: int | None = None
     link_type: str | None = None  # 'revision'
 
@@ -36,6 +37,8 @@ class RequestUpdate(BaseModel):
     parent_request_id: int | None = None
     sub_type: str | None = None
     work_mode: str | None = None
+    submitted_at: str | None = None
+    researcher_note: str | None = None
 
 
 class RequestResponse(BaseModel):
@@ -59,9 +62,11 @@ class RequestResponse(BaseModel):
     work_mode: str = "service"
     created_by: int | None = None
     created_at: str | None = None
+    submitted_at: str | None = None
     updated_at: str | None = None
     completed_at: str | None = None
     automation_hours: float | None = None
+    researcher_note: str | None = None
     parent_request_id: int | None = None
     link_type: str | None = None
     # joined fields
@@ -93,7 +98,7 @@ class RequestListParams(BaseModel):
     work_mode: str | None = None
     completed_at_from: str | None = None
     completed_at_to: str | None = None
-    sort_by: str = "created_at"   # created_at | completed_at
+    sort_by: str = "submitted_at"  # submitted_at | created_at | completed_at
     sort_order: str = "desc"      # desc | asc
 
 

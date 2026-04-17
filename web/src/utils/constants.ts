@@ -38,6 +38,7 @@ export const SUB_TYPE_OPTIONS: Record<string, { label: string; value: string }[]
     { label: '系统建设', value: '系统建设' },
     { label: '培训赋能', value: '培训赋能' },
     { label: '数据库建设', value: '数据库建设' },
+    { label: '客户拜访', value: '客户拜访' },
     { label: '其他', value: '其他' },
   ],
 };

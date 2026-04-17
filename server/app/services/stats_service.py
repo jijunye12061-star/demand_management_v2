@@ -18,6 +18,7 @@ from app.models.user import User
 from app.models.download_log import DownloadLog
 from app.models.collaborator import RequestCollaborator
 from app.models.progress_update import RequestUpdate
+from app.utils.constants import REQUEST_TYPES, RESEARCH_SCOPES
 
 BJT = timezone(timedelta(hours=8))
 
@@ -343,7 +344,8 @@ def get_researcher_matrix(db: Session) -> list[dict]:
 def get_type_matrix(db: Session) -> list[dict]:
     rows = (
         db.query(Request.request_type.label("name"), *_build_period_columns())
-        .filter(Request.status == "completed")
+        .filter(Request.status == "completed",
+                Request.request_type.in_(REQUEST_TYPES))
         .group_by(Request.request_type)
         .all()
     )
@@ -384,7 +386,8 @@ def get_charts(db: Session, period: str) -> dict:
 
     type_dist = (
         db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
-        .filter(Request.status == "completed", Request.completed_at >= start)
+        .filter(Request.status == "completed", Request.completed_at >= start,
+                Request.request_type.in_(REQUEST_TYPES))
         .group_by(Request.request_type)
         .all()
     )
@@ -518,7 +521,8 @@ def get_researcher_detail(db: Session, user_id: int, period: str = "year", *, da
         type_start, type_end = _period_range(period)
     type_dist_q = (
         db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
-        .filter(base, Request.status == "completed", Request.completed_at >= type_start)
+        .filter(base, Request.status == "completed", Request.completed_at >= type_start,
+                Request.request_type.in_(REQUEST_TYPES))
     )
     if type_end:
         type_dist_q = type_dist_q.filter(Request.completed_at < type_end)
@@ -668,7 +672,8 @@ def get_org_detail(db: Session, org_name: str) -> dict:
 
     type_dist = (
         db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
-        .filter(base, Request.status == "completed")
+        .filter(base, Request.status == "completed",
+                Request.request_type.in_(REQUEST_TYPES))
         .group_by(Request.request_type).all()
     )
     return {
@@ -696,7 +701,8 @@ def get_sales_detail(db: Session, user_id: int) -> dict:
 
     type_dist = (
         db.query(Request.request_type.label("name"), func.count(Request.id).label("value"))
-        .filter(base, Request.status == "completed")
+        .filter(base, Request.status == "completed",
+                Request.request_type.in_(REQUEST_TYPES))
         .group_by(Request.request_type).all()
     )
     org_dist = (

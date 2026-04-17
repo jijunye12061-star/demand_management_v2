@@ -31,5 +31,7 @@ class Request(Base):
     link_type: Mapped[str | None] = mapped_column(Text)  # 'revision' | None
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     created_at: Mapped[str | None] = mapped_column(String)
+    submitted_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)
     completed_at: Mapped[str | None] = mapped_column(String)
+    researcher_note: Mapped[str | None] = mapped_column(Text)

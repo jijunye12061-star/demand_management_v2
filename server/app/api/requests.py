@@ -44,7 +44,7 @@ def list_requests(
     work_mode: str | None = None,
     completed_at_from: str | None = None,
     completed_at_to: str | None = None,
-    sort_by: str = "created_at",
+    sort_by: str = "submitted_at",
     sort_order: str = "desc",
 ):
     params = RequestListParams(
@@ -57,6 +57,11 @@ def list_requests(
         sort_by=sort_by, sort_order=sort_order,
     )
     items, total = query_requests(db, user, params)
+    # researcher_note 仅 researcher 本人 + admin 可见
+    if user.role != "admin":
+        for item in items:
+            if item.get("researcher_id") != user.id:
+                item["researcher_note"] = None
     return {"items": items, "total": total}
 
 
@@ -72,10 +77,12 @@ def feed_stats(
 ):
     """需求动态图表统计：按筛选条件聚合 org_type × request_type × research_scope"""
     from sqlalchemy import func, and_, or_
+    from app.utils.constants import REQUEST_TYPES, RESEARCH_SCOPES
 
     q = db.query(Request).filter(
         Request.status == "completed",
         Request.is_confidential == 0,
+        Request.request_type.in_(REQUEST_TYPES),
     )
     if request_type:
         q = q.filter(Request.request_type == request_type)
@@ -93,16 +100,17 @@ def feed_stats(
 
     rows = q.all()
 
-    # 聚合: org_type × request_type
+    # 聚合: org_type × request_type；研究范围仅展示白名单值
     ot_rt: dict[tuple, int] = {}
-    # 聚合: org_type × research_scope
     ot_rs: dict[tuple, int] = {}
+    valid_scopes = set(RESEARCH_SCOPES)
     for r in rows:
-        ot = r.org_type or "未知"
-        rt = r.request_type or "未知"
-        rs = r.research_scope or "未知"
+        ot = r.org_type or "其他"
+        rt = r.request_type
+        rs = r.research_scope
         ot_rt[(ot, rt)] = ot_rt.get((ot, rt), 0) + 1
-        ot_rs[(ot, rs)] = ot_rs.get((ot, rs), 0) + 1
+        if rs in valid_scopes:
+            ot_rs[(ot, rs)] = ot_rs.get((ot, rs), 0) + 1
 
     return {
         "total": len(rows),
@@ -156,6 +164,9 @@ def get_request(request_id: int, db: DB, user: CurrentUser):
     if not req:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
     result = {c.name: getattr(req, c.name) for c in req.__table__.columns}
+    # researcher_note 仅 researcher 本人 + admin 可见
+    if user.role != "admin" and user.id != req.researcher_id:
+        result["researcher_note"] = None
     # 追加协作者详情
     collabs = (
         db.query(
@@ -270,6 +281,7 @@ def create(body: RequestCreate, db: DB, user: CurrentUser):
         sales_id=sales_id,
         created_by=user.id,
         created_at=body.created_at or now_beijing(),
+        submitted_at=body.submitted_at or body.created_at or now_beijing(),
         updated_at=now_beijing(),
         status=initial_status,
         parent_request_id=body.parent_request_id,
@@ -315,7 +327,7 @@ def update(request_id: int, body: RequestUpdate, db: DB, user: CurrentUser):
         if _check_parent_loop(db, request_id, new_parent_id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "关联需求存在循环引用")
 
-    # admin: 可编辑任意需求的任意字段
+    # admin: 可编辑任意需求的任意字段（含 researcher_note）
     if user.role == "admin":
         for k, v in updates.items():
             if k == "is_confidential" and v is not None:
@@ -326,11 +338,15 @@ def update(request_id: int, body: RequestUpdate, db: DB, user: CurrentUser):
         db.commit()
         return {"message": "ok"}
 
+    # researcher_note: 仅 researcher_id 本人可写（非 admin 的其他角色丢弃此字段）
+    if "researcher_note" in updates and user.id != req.researcher_id:
+        updates.pop("researcher_note")
+
     # sales/researcher: 仅可编辑自己创建的 pending/withdrawn 需求, 限定字段
     editable_fields = {
         "title", "description", "request_type", "research_scope",
         "org_name", "org_type", "department", "researcher_id", "is_confidential",
-        "parent_request_id",
+        "parent_request_id", "submitted_at", "researcher_note",
     }
     if user.role in ("sales", "researcher"):
         if req.status not in ("pending", "withdrawn"):

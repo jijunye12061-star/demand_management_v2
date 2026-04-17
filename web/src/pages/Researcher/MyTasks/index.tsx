@@ -24,8 +24,10 @@ import {
   Select,
   Space,
   DatePicker,
+  Tooltip,
+  Typography,
 } from 'antd';
-import { MinusCircleOutlined, UploadOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, UploadOutlined, EditOutlined, FileTextOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useModel, history } from '@umijs/max';
 import {
@@ -72,6 +74,37 @@ const MyTasks: React.FC = () => {
   const [editForm] = Form.useForm();
   const [orgList, setOrgList] = useState<Organization[]>([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
+
+  // 研究员备注 Modal
+  const [noteModalVisible, setNoteModalVisible] = useState(false);
+  const [noteRecord, setNoteRecord] = useState<RequestItem | null>(null);
+  const [noteValue, setNoteValue] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  const openNoteModal = (record: RequestItem) => {
+    setNoteRecord(record);
+    setNoteValue(record.researcher_note || '');
+    setNoteModalVisible(true);
+  };
+
+  const handleNoteSave = async () => {
+    if (!noteRecord) return;
+    setNoteSaving(true);
+    try {
+      await updateRequest(noteRecord.id, { researcher_note: noteValue });
+      message.success('备注已保存');
+      setNoteModalVisible(false);
+      // 刷新所有 tab
+      pendingRef.current?.reload();
+      progressRef.current?.reload();
+      completedRef.current?.reload();
+      submittedRef.current?.reload();
+    } catch (err: any) {
+      message.error(err?.message || '保存失败');
+    } finally {
+      setNoteSaving(false);
+    }
+  };
 
   // 更新进度 Modal
   const [progressModalVisible, setProgressModalVisible] = useState(false);
@@ -294,7 +327,32 @@ const MyTasks: React.FC = () => {
         return <Tag color={cfg?.status?.toLowerCase()}>{cfg?.text || entity.status}</Tag>;
       },
     },
-    { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', hideInSearch: true },
+    {
+      title: '提单时间', dataIndex: 'submitted_at', valueType: 'dateTime',
+      hideInSearch: true, sorter: true, defaultSortOrder: 'descend', width: 150,
+    },
+    {
+      title: '更新时间', dataIndex: 'updated_at', valueType: 'dateTime',
+      hideInSearch: true, sorter: true, width: 150,
+    },
+    {
+      title: '备注',
+      dataIndex: 'researcher_note',
+      hideInSearch: true,
+      width: 120,
+      render: (_, entity) => (
+        <Space size={4}>
+          {entity.researcher_note
+            ? <Tooltip title={entity.researcher_note}><Typography.Text ellipsis style={{ maxWidth: 80 }}>{entity.researcher_note}</Typography.Text></Tooltip>
+            : <span style={{ color: '#bbb', fontSize: 12 }}>无</span>
+          }
+          <EditOutlined
+            style={{ color: '#1890ff', cursor: 'pointer' }}
+            onClick={(e) => { e.stopPropagation(); openNoteModal(entity); }}
+          />
+        </Space>
+      ),
+    },
   ];
 
   // ── 待处理: 接受 + 退回 ──
@@ -414,12 +472,15 @@ const MyTasks: React.FC = () => {
     },
   ];
 
-  const makeRequest = (statusFilter: string, isSubmitted = false) => async (params: any) => {
+  const makeRequest = (statusFilter: string, isSubmitted = false) => async (params: any, sort?: any) => {
+    const sortField = sort && Object.keys(sort)[0];
+    const sortOrder = sortField && sort[sortField] ? (sort[sortField] === 'ascend' ? 'asc' : 'desc') : 'desc';
     return getRequests({
       ...params,
       scope: 'mine',
       status: isSubmitted ? undefined : statusFilter,
-      // "我提交的" tab 用 created_by 过滤，其他 tab 用 researcher_id
+      sort_by: sortField || 'submitted_at',
+      sort_order: sortOrder,
       ...(isSubmitted ? {} : { researcher_id: currentUserId }),
     });
   };
@@ -681,6 +742,26 @@ const MyTasks: React.FC = () => {
             </Upload>
           </Form.Item>
         </Form>
+      </Modal>
+      {/* 研究员备注 Modal */}
+      <Modal
+        title={<><FileTextOutlined /> 研究员备注（仅自己和管理员可见）</>}
+        open={noteModalVisible}
+        onCancel={() => setNoteModalVisible(false)}
+        onOk={handleNoteSave}
+        confirmLoading={noteSaving}
+        okText="保存"
+        destroyOnClose
+        width={480}
+      >
+        <Input.TextArea
+          rows={5}
+          value={noteValue}
+          onChange={(e) => setNoteValue(e.target.value)}
+          placeholder="可记录调研背景、客户特殊要求、后续跟进提醒等..."
+          maxLength={2000}
+          showCount
+        />
       </Modal>
     </PageContainer>
   );

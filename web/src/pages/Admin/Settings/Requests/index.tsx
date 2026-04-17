@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   PageContainer, ProTable, DrawerForm,
-  ProFormText, ProFormTextArea, ProFormSelect, ProFormSwitch, ProFormDependency,
+  ProFormText, ProFormTextArea, ProFormSelect, ProFormSwitch, ProFormDependency, ProFormDateTimePicker,
 } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Tag, Popconfirm, Switch, Descriptions, App, Form, Space, Button, Select, InputNumber } from 'antd';
@@ -89,6 +89,25 @@ const Requests: React.FC = () => {
       title: '需求类型', dataIndex: 'request_type', width: 110,
       valueType: 'select', fieldProps: { options: REQUEST_TYPE_OPTIONS },
     },
+    { title: '二级分类', dataIndex: 'sub_type', hideInTable: true },
+    {
+      title: '研究范围', dataIndex: 'research_scope', hideInTable: true,
+      valueType: 'select', fieldProps: { options: RESEARCH_SCOPE_OPTIONS, allowClear: true },
+    },
+    {
+      title: '销售筛选', dataIndex: 'sales_id', hideInTable: true,
+      valueType: 'select',
+      fieldProps: {
+        showSearch: true,
+        optionFilterProp: 'label',
+        placeholder: '按销售筛选',
+        allowClear: true,
+      },
+      request: async () => {
+        const list = await getSales();
+        return list.map((r: any) => ({ label: r.display_name, value: r.id }));
+      },
+    },
     { title: '机构', dataIndex: 'org_name', ellipsis: true, width: 120, hideInSearch: true },
     {
       title: '机构类型', dataIndex: 'org_type', width: 80,
@@ -134,9 +153,11 @@ const Requests: React.FC = () => {
       ),
     },
     { title: '工时', dataIndex: 'work_hours', width: 60, hideInSearch: true },
+    { title: '提单时间', dataIndex: 'submitted_at', valueType: 'dateTime', width: 150, hideInSearch: true, sorter: true, defaultSortOrder: 'descend' },
     { title: '创建时间', dataIndex: 'created_at', valueType: 'dateTime', width: 150, hideInSearch: true, sorter: true },
     { title: '完成时间', dataIndex: 'completed_at', valueType: 'dateTime', width: 150, hideInSearch: true, sorter: true },
     { title: '最后更新', dataIndex: 'updated_at', valueType: 'dateTime', width: 160, hideInSearch: true },
+    { title: '研究员备注', dataIndex: 'researcher_note', ellipsis: true, width: 160, hideInSearch: true },
     {
       title: '创建日期', dataIndex: 'dateRange', valueType: 'dateRange', hideInTable: true,
       search: { transform: (v) => ({ date_from: v[0], date_to: v[1] }) },
@@ -171,7 +192,7 @@ const Requests: React.FC = () => {
           const sortOrder = sortField && sort[sortField] ? (sort[sortField] === 'ascend' ? 'asc' : 'desc') : 'desc';
           return getRequests({
             ...params,
-            sort_by: sortField || 'created_at',
+            sort_by: sortField || 'submitted_at',
             sort_order: sortOrder,
           });
         }}
@@ -210,6 +231,7 @@ const Requests: React.FC = () => {
               </Tag>
             </Descriptions.Item>
             <Descriptions.Item label="创建时间">{editingRecord.created_at || '-'}</Descriptions.Item>
+            <Descriptions.Item label="提单时间">{editingRecord.submitted_at || '-'}</Descriptions.Item>
             <Descriptions.Item label="最近更新">{editingRecord.updated_at || '-'}</Descriptions.Item>
             {editingRecord.completed_at && <Descriptions.Item label="完成时间">{editingRecord.completed_at}</Descriptions.Item>}
             {editingRecord.withdraw_reason && <Descriptions.Item label="退回原因" span={2}>{editingRecord.withdraw_reason}</Descriptions.Item>}
@@ -286,6 +308,12 @@ const Requests: React.FC = () => {
             allowClear: true,
           }}
         />
+        <ProFormDateTimePicker
+          name="submitted_at"
+          label="提单时间"
+          fieldProps={{ showTime: true, format: 'YYYY-MM-DD HH:mm:ss' }}
+        />
+        <ProFormTextArea name="researcher_note" label="研究员备注（仅研究员/管理员可见）" />
         <ProFormTextArea name="result_note" label="完成说明" />
 
         {/* 协作者编辑 */}

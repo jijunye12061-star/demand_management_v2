@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { PageContainer, ProTable, ProForm, ProFormText, ProFormTextArea, ProFormSelect, ProFormDependency } from '@ant-design/pro-components';
+import { PageContainer, ProTable, ProForm, ProFormText, ProFormTextArea, ProFormSelect, ProFormDependency, ProFormDateTimePicker } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Tag, Popconfirm, Modal, Form, App } from 'antd';
 import {
@@ -58,6 +58,7 @@ const MyRequests: React.FC = () => {
       department: record.department,
       researcher_id: record.researcher_id,
       is_confidential: record.is_confidential,
+      submitted_at: record.submitted_at,
     });
     // 加载机构列表
     try {
@@ -158,11 +159,29 @@ const MyRequests: React.FC = () => {
       },
     },
     {
+      title: '提单时间',
+      dataIndex: 'submitted_at',
+      valueType: 'dateTime',
+      hideInSearch: true,
+      sorter: true,
+      defaultSortOrder: 'descend',
+      width: 150,
+    },
+    {
+      title: '更新时间',
+      dataIndex: 'updated_at',
+      valueType: 'dateTime',
+      hideInSearch: true,
+      sorter: true,
+      width: 150,
+    },
+    {
       title: '创建时间',
       dataIndex: 'created_at',
       valueType: 'dateTime',
       hideInSearch: true,
       sorter: true,
+      width: 150,
     },
     {
       title: '日期范围',
@@ -229,7 +248,11 @@ const MyRequests: React.FC = () => {
         actionRef={actionRef}
         rowKey="id"
         search={{ labelWidth: 100 }}
-        request={async (params) => getRequests({ ...params, scope: 'mine' })}
+        request={async (params, sort) => {
+          const sortField = sort && Object.keys(sort)[0];
+          const sortOrder = sortField && sort[sortField] ? (sort[sortField] === 'ascend' ? 'asc' : 'desc') : 'desc';
+          return getRequests({ ...params, scope: 'mine', sort_by: sortField || 'submitted_at', sort_order: sortOrder });
+        }}
         columns={columns}
       />
 
@@ -309,6 +332,12 @@ const MyRequests: React.FC = () => {
               const list = await getResearchers();
               return list.map((r) => ({ label: r.display_name, value: r.id }));
             }}
+          />
+          <ProFormDateTimePicker
+            name="submitted_at"
+            label="提单时间"
+            tooltip="可手动修改提单时间，用于补录历史需求"
+            fieldProps={{ showTime: true, format: 'YYYY-MM-DD HH:mm:ss' }}
           />
         </ProForm>
       </Modal>

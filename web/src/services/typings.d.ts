@@ -53,6 +53,8 @@ export interface RequestItem {
   withdraw_reason?: string;
   sub_type?: string;
   work_mode?: 'service' | 'proactive';
+  submitted_at?: string;
+  researcher_note?: string | null;
   collaborators?: CollaboratorDetail[];
   automation_hours?: number;
   parent_request_id?: number;
