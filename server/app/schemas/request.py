@@ -134,3 +134,13 @@ class CollaboratorItem(BaseModel):
 
 class CollaboratorsUpdate(BaseModel):
     collaborators: list[CollaboratorItem] = []
+
+
+class ResearcherEditRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    result_note: str | None = None
+    request_type: str | None = None
+    sub_type: str | None = None
+    work_mode: str | None = None
+    visibility: str | None = None

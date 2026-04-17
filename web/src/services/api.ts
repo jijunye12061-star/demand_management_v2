@@ -197,3 +197,31 @@ export async function getMyDetail(period: string = 'year', dateFrom?: string, da
     }[];
   }>('/api/v1/stats/my-detail', { method: 'GET', params });
 }
+
+export async function getFeatures() {
+  return request<{ researcher_self_edit_enabled: boolean }>('/api/v1/features', { method: 'GET' });
+}
+
+export async function researcherEditRequest(
+  id: number,
+  data: {
+    title?: string;
+    description?: string;
+    result_note?: string;
+    request_type?: string;
+    sub_type?: string;
+    work_mode?: string;
+    visibility?: string;
+  },
+) {
+  return request<{ changed_fields: string[] }>(`/api/v1/requests/${id}/researcher-edit`, {
+    method: 'PUT',
+    data,
+  });
+}
+
+export async function getRequestEditLogs(id: number) {
+  return request<
+    { id: number; editor_id: number; editor_name: string; field_name: string; old_value: string | null; new_value: string | null; edited_at: string }[]
+  >(`/api/v1/requests/${id}/edit-logs`, { method: 'GET' });
+}

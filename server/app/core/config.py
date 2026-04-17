@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     BACKUP_DIR: str = "./data/backups"
     ACCESS_TOKEN_EXPIRE_HOURS: int = 24
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    RESEARCHER_SELF_EDIT_ENABLED: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

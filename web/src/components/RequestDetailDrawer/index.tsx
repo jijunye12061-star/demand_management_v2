@@ -3,7 +3,7 @@ import { Drawer, Tag, Typography, Alert, Table, Button, Space } from 'antd';
 import { ProDescriptions } from '@ant-design/pro-components';
 import type { RequestItem } from '@/services/typings';
 import { STATUS_ENUM, WORK_MODE_OPTIONS } from '@/utils/constants';
-import { getRequestDetail } from '@/services/api';
+import { getRequestDetail, getRequestEditLogs } from '@/services/api';
 import FileDownloadButton from '../FileDownloadButton';
 import ProgressTimeline from '../ProgressTimeline';
 import { useModel, history } from '@umijs/max';
@@ -31,6 +31,8 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
   const [navStack, setNavStack] = useState<RequestItem[]>([]);
   // 完整详情（含 revisions），仅用于初始 request（非导航）
   const [fullDetail, setFullDetail] = useState<RequestItem | null>(null);
+  // 编辑历史（admin 模式）
+  const [editLogs, setEditLogs] = useState<any[]>([]);
 
   useEffect(() => {
     if (open) setNavStack([]);
@@ -39,8 +41,11 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
   useEffect(() => {
     if (open && request?.id) {
       getRequestDetail(request.id).then((d) => setFullDetail(d as RequestItem)).catch(() => {});
+      if (downloadMode === 'admin') {
+        getRequestEditLogs(request.id).then(setEditLogs).catch(() => setEditLogs([]));
+      }
     }
-    if (!open) setFullDetail(null);
+    if (!open) { setFullDetail(null); setEditLogs([]); }
   }, [open, request?.id]);
 
   const navigateTo = useCallback(async (id: number) => {
@@ -298,6 +303,33 @@ const RequestDetailDrawer: React.FC<RequestDetailDrawerProps> = ({
       {/* 进度记录时间线 */}
       {displayRequest && (
         <ProgressTimeline requestId={displayRequest.id} />
+      )}
+
+      {/* 编辑历史（仅 admin 模式） */}
+      {downloadMode === 'admin' && editLogs.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>内容编辑历史</div>
+          <Table
+            size="small"
+            rowKey="id"
+            dataSource={editLogs}
+            pagination={false}
+            columns={[
+              { title: '时间', dataIndex: 'edited_at', width: 160, render: (v: string) => v ? v.slice(0, 16).replace('T', ' ') : '-' },
+              { title: '操作人', dataIndex: 'editor_name', width: 80 },
+              {
+                title: '字段', dataIndex: 'field_name', width: 100,
+                render: (v: string) => ({
+                  title: '标题', description: '描述', result_note: '完成说明',
+                  request_type: '需求类型', sub_type: '二级分类',
+                  work_mode: '工作模式', visibility: '可见范围',
+                }[v] || v),
+              },
+              { title: '修改前', dataIndex: 'old_value', ellipsis: true, render: (v: string | null) => v ?? '-' },
+              { title: '修改后', dataIndex: 'new_value', ellipsis: true, render: (v: string | null) => v ?? '-' },
+            ]}
+          />
+        </div>
       )}
 
       {/* 发起修改按钮 */}

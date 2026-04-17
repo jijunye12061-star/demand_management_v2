@@ -10,8 +10,9 @@ from app.models.collaborator import RequestCollaborator
 from app.schemas.request import (
     RequestCreate, RequestUpdate, RequestResponse, RequestListParams,
     WithdrawRequest, ResubmitRequest, ReassignRequest, ConfidentialRequest,
-    CollaboratorsUpdate,
+    CollaboratorsUpdate, ResearcherEditRequest,
 )
+from app.models.request_edit_log import RequestEditLog
 from app.services.request_service import (
     query_requests, accept_request, complete_request,
     withdraw_request, resubmit_request, cancel_request,
@@ -520,3 +521,65 @@ def update_collaborators(request_id: int, body: CollaboratorsUpdate, db: DB, adm
         ))
     db.commit()
     return {"message": "ok"}
+
+
+@router.put("/{request_id}/researcher-edit")
+def researcher_edit(request_id: int, body: ResearcherEditRequest, db: DB, user: CurrentUser):
+    if not settings.RESEARCHER_SELF_EDIT_ENABLED:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "功能未开放")
+    if user.role not in ("researcher", "admin"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "权限不足")
+    req = db.get(Request, request_id)
+    if not req:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
+    if req.status != "completed":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "仅已完成需求可编辑")
+    if req.researcher_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "仅本人接单的条目可编辑")
+
+    updates = body.model_dump(exclude_unset=True)
+    changed_fields = []
+    for k, new_val in updates.items():
+        old_val = getattr(req, k)
+        if old_val != new_val:
+            db.add(RequestEditLog(
+                request_id=request_id,
+                editor_id=user.id,
+                field_name=k,
+                old_value=str(old_val) if old_val is not None else None,
+                new_value=str(new_val) if new_val is not None else None,
+                edited_at=now_beijing(),
+            ))
+            setattr(req, k, new_val)
+            changed_fields.append(k)
+
+    if changed_fields:
+        req.updated_at = now_beijing()
+    db.commit()
+    return {"message": "ok", "changed_fields": changed_fields}
+
+
+@router.get("/{request_id}/edit-logs")
+def get_edit_logs(request_id: int, db: DB, admin: AdminUser):
+    req = db.get(Request, request_id)
+    if not req:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "需求不存在")
+    logs = (
+        db.query(RequestEditLog, User)
+        .join(User, RequestEditLog.editor_id == User.id)
+        .filter(RequestEditLog.request_id == request_id)
+        .order_by(RequestEditLog.edited_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": log.id,
+            "editor_id": log.editor_id,
+            "editor_name": user.name,
+            "field_name": log.field_name,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "edited_at": log.edited_at,
+        }
+        for log, user in logs
+    ]

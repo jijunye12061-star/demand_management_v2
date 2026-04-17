@@ -1,6 +1,7 @@
 import { history, type RequestConfig, type RunTimeLayoutConfig } from '@umijs/max';
 import { AvatarDropdown, AvatarName } from './components/RightContent/AvatarDropdown';
 import { message } from 'antd';
+import { getFeatures } from './services/api';
 
 const loginPath = '/login';
 declare const API_BASE_URL: string;
@@ -8,13 +9,19 @@ declare const API_BASE_URL: string;
 // 1. 获取全局初始状态 (从 localStorage 读取)
 export async function getInitialState(): Promise<{
   currentUser?: { id: number; username: string; role: string; display_name: string };
+  features?: { researcher_self_edit_enabled: boolean };
 }> {
   const token = localStorage.getItem('access_token');
   const userStr = localStorage.getItem('user');
 
   if (token && userStr) {
     try {
-      return { currentUser: JSON.parse(userStr) };
+      const currentUser = JSON.parse(userStr);
+      let features: { researcher_self_edit_enabled: boolean } | undefined;
+      try {
+        features = await getFeatures();
+      } catch { /* 开关接口失败不影响登录 */ }
+      return { currentUser, features };
     } catch (e) {
       console.error('解析用户信息失败', e);
     }

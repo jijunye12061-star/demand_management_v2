@@ -6,5 +6,6 @@ from app.models.download_log import DownloadLog
 from app.models.template import RequestTemplate
 from app.models.collaborator import RequestCollaborator
 from app.models.progress_update import RequestUpdate
+from app.models.request_edit_log import RequestEditLog
 
-__all__ = ["User", "Request", "Team", "TeamOrgMapping", "Organization", "DownloadLog", "RequestTemplate", "RequestCollaborator", "RequestUpdate"]
+__all__ = ["User", "Request", "Team", "TeamOrgMapping", "Organization", "DownloadLog", "RequestTemplate", "RequestCollaborator", "RequestUpdate", "RequestEditLog"]

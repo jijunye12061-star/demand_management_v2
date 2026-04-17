@@ -41,10 +41,11 @@ import {
   cancelRequest,
   updateRequest,
   getOrganizations,
+  researcherEditRequest,
 } from '@/services/api';
 import { getProgressUpdates } from '@/services/progressUpdate';
 import type { RequestItem, Organization } from '@/services/typings';
-import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP } from '@/utils/constants';
+import { STATUS_ENUM, REQUEST_TYPE_OPTIONS, SUB_TYPE_OPTIONS, RESEARCH_SCOPE_OPTIONS, ORG_DEPARTMENT_MAP, WORK_MODE_RULES } from '@/utils/constants';
 import RequestDetailDrawer from '@/components/RequestDetailDrawer';
 import FileDownloadButton from '@/components/FileDownloadButton';
 import ProgressUpdateModal from '../components/ProgressUpdateModal';
@@ -103,6 +104,43 @@ const MyTasks: React.FC = () => {
       message.error(err?.message || '保存失败');
     } finally {
       setNoteSaving(false);
+    }
+  };
+
+  // 编辑已完成需求 Modal
+  const [editCompletedVisible, setEditCompletedVisible] = useState(false);
+  const [editCompletedRecord, setEditCompletedRecord] = useState<RequestItem | null>(null);
+  const [editCompletedForm] = Form.useForm();
+  const [editCompletedSubmitting, setEditCompletedSubmitting] = useState(false);
+  const selfEditEnabled = (initialState as any)?.features?.researcher_self_edit_enabled;
+
+  const openEditCompleted = (record: RequestItem) => {
+    setEditCompletedRecord(record);
+    editCompletedForm.setFieldsValue({
+      title: record.title,
+      description: record.description,
+      result_note: record.result_note,
+      request_type: record.request_type,
+      sub_type: record.sub_type,
+      work_mode: record.work_mode,
+      visibility: record.visibility,
+    });
+    setEditCompletedVisible(true);
+  };
+
+  const handleEditCompletedSubmit = async () => {
+    try {
+      const values = await editCompletedForm.validateFields();
+      setEditCompletedSubmitting(true);
+      await researcherEditRequest(editCompletedRecord!.id, values);
+      message.success('需求已更新');
+      setEditCompletedVisible(false);
+      completedRef.current?.reload();
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(err?.message || '操作失败');
+    } finally {
+      setEditCompletedSubmitting(false);
     }
   };
 
@@ -404,7 +442,7 @@ const MyTasks: React.FC = () => {
     },
   ];
 
-  // ── 已完成: 下载 + 撤销完成 ──
+  // ── 已完成: 下载 + 编辑内容（临时功能）+ 撤销完成 ──
   const completedColumns: ProColumns<RequestItem>[] = [
     ...baseColumns,
     { title: '工时(h)', dataIndex: 'work_hours', hideInSearch: true, width: 80 },
@@ -413,7 +451,7 @@ const MyTasks: React.FC = () => {
       title: '操作',
       valueType: 'option',
       key: 'option',
-      width: 200,
+      width: 240,
       render: (_, entity) => [
         entity.attachment_path && (
           <FileDownloadButton
@@ -422,6 +460,9 @@ const MyTasks: React.FC = () => {
             requestId={entity.id}
             size="small"
           />
+        ),
+        selfEditEnabled && (
+          <a key="editContent" onClick={() => openEditCompleted(entity)}>编辑内容</a>
         ),
         <Popconfirm
           key="reopen"
@@ -762,6 +803,78 @@ const MyTasks: React.FC = () => {
           maxLength={2000}
           showCount
         />
+      </Modal>
+
+      {/* 编辑已完成需求内容 Modal（临时功能） */}
+      <Modal
+        title="编辑需求内容"
+        open={editCompletedVisible}
+        onCancel={() => { setEditCompletedVisible(false); setEditCompletedRecord(null); editCompletedForm.resetFields(); }}
+        onOk={handleEditCompletedSubmit}
+        confirmLoading={editCompletedSubmitting}
+        okText="保存"
+        width={640}
+        destroyOnClose
+      >
+        <ProForm form={editCompletedForm} submitter={false} layout="vertical">
+          <ProFormText name="title" label="需求标题" rules={[{ required: true }]} />
+          <ProFormTextArea name="description" label="需求描述" />
+          <ProFormTextArea name="result_note" label="完成说明" />
+          <ProFormSelect
+            name="request_type"
+            label="需求类型"
+            options={REQUEST_TYPE_OPTIONS}
+            rules={[{ required: true }]}
+            fieldProps={{
+              onChange: (val: string) => {
+                editCompletedForm.setFieldValue('sub_type', undefined);
+                const rule = WORK_MODE_RULES[val];
+                if (rule?.mode === 'locked') {
+                  editCompletedForm.setFieldValue('work_mode', rule.value);
+                }
+              },
+            }}
+          />
+          <ProFormDependency name={['request_type']}>
+            {({ request_type }) => {
+              const subOpts = SUB_TYPE_OPTIONS[request_type];
+              if (!subOpts) return null;
+              return (
+                <ProFormSelect
+                  name="sub_type"
+                  label="二级分类"
+                  options={subOpts}
+                  placeholder="请选择二级分类（选填）"
+                />
+              );
+            }}
+          </ProFormDependency>
+          <ProFormDependency name={['request_type']}>
+            {({ request_type }) => {
+              const rule = WORK_MODE_RULES[request_type];
+              const locked = rule?.mode === 'locked';
+              return (
+                <ProFormSelect
+                  name="work_mode"
+                  label="工作模式"
+                  options={[
+                    { label: '服务模式', value: 'service' },
+                    { label: '主动模式', value: 'proactive' },
+                  ]}
+                  fieldProps={{ disabled: locked }}
+                />
+              );
+            }}
+          </ProFormDependency>
+          <ProFormSelect
+            name="visibility"
+            label="可见范围"
+            options={[
+              { label: '公开（进入 Feed）', value: 'public' },
+              { label: '内部（不进 Feed）', value: 'internal' },
+            ]}
+          />
+        </ProForm>
       </Modal>
     </PageContainer>
   );
