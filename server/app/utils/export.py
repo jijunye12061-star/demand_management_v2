@@ -20,6 +20,7 @@ FULL_COLUMNS = [
     ("销售", "sales_name", 12),
     ("研究员", "researcher_name", 12),
     ("状态", "status", 10),
+    ("处理结果", "result_note", 50),
     ("工时(h)", "work_hours", 10),
     ("自动化建设工时(h)", "automation_hours", 14),
     ("总工时(h)", "total_work_hours", 10),
